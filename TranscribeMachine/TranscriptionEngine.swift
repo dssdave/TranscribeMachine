@@ -10,8 +10,8 @@ struct TranscriptSegment: Identifiable {
     let timestamp: Date
 
     enum Speaker: String {
-        case local = "Local"
-        case remote = "Remote"
+        case local = "You"
+        case remote = "Caller"
 
         var color: Color {
             switch self {

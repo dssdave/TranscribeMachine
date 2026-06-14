@@ -585,9 +585,9 @@ struct ContentView: View {
     private func displayName(_ seg: DiarizedSegment) -> String {
         let key = speakerKey(seg)
         if let name = speakerNames[key] { return name }
-        let prefix = seg.source == "local" ? "Room" : "Remote"
-        let num = (Int(seg.speaker.replacingOccurrences(of: "SPEAKER_", with: "")) ?? 0) + 1
-        return "\(prefix) \(num)"
+        let allKeys = Array(Set(diarizedSegments.map { speakerKey($0) })).sorted()
+        let idx = (allKeys.firstIndex(of: key) ?? 0) + 1
+        return "Speaker \(idx)"
     }
 
     private func color(for seg: DiarizedSegment) -> Color {

@@ -65,9 +65,7 @@ class OllamaService: ObservableObject {
         var prompt = """
         You are a meeting analyst. Read the transcript below and write a clear meeting recap.
 
-        The transcript uses two speakers:
-        - [Local] is the person in the room with the microphone (think of them as "you")
-        - [Remote] is the caller on Zoom, phone, or video
+        The transcript labels speakers as "You", "Caller", or "Speaker 1", "Speaker 2", etc.
 
         Write in plain prose. Include:
         - A 2 to 3 sentence summary of what was discussed
@@ -92,9 +90,7 @@ class OllamaService: ObservableObject {
         let prompt = """
         You are a meeting analyst. Read the transcript below and extract only the firm decisions made or agreed upon.
 
-        The transcript uses two speakers:
-        - [Local] is the person in the room with the microphone
-        - [Remote] is the caller on Zoom, phone, or video
+        The transcript labels speakers as "You", "Caller", or "Speaker 1", "Speaker 2", etc.
 
         List each decision clearly and concisely. Do not include discussion or speculation, only decisions that were actually agreed on.
         \(formatRule)
@@ -113,9 +109,7 @@ class OllamaService: ObservableObject {
         var prompt = """
         You are a meeting analyst. Read the transcript below and list every follow-up task, commitment, or thing that needs to happen after this meeting.
 
-        The transcript uses two speakers:
-        - [Local] is the person in the room with the microphone (refer to them as "you")
-        - [Remote] is the caller on Zoom, phone, or video (refer to them as "caller" or their name if mentioned)
+        The transcript labels speakers as "You", "Caller", or "Speaker 1", "Speaker 2", etc. When referring to "You", use "you". When referring to others, use "Caller" or their name if mentioned.
         """
 
         prompt += actionItemInstruction(owners: options.includeOwners, deadlines: options.includeDeadlines)
@@ -132,9 +126,7 @@ class OllamaService: ObservableObject {
         var prompt = """
         You are a professional email writer. Based on the meeting transcript below, write a follow-up email.
 
-        The transcript uses two speakers:
-        - [Local] is the person in the room with the microphone — this is the email sender
-        - [Remote] is the caller on Zoom, phone, or video — this is the email recipient
+        The transcript labels speakers as "You", "Caller", or "Speaker 1", "Speaker 2", etc. "You" is the email sender. The primary other speaker is the email recipient.
 
         The email should include:
         - Subject line
@@ -299,9 +291,13 @@ class OllamaService: ObservableObject {
             // Sanitize any residual bracket notation the model still outputs
             task  = task.replacingOccurrences(of: "[Local]",  with: "you")
                         .replacingOccurrences(of: "[Remote]", with: "caller")
+                        .replacingOccurrences(of: "[You]",    with: "you")
+                        .replacingOccurrences(of: "[Caller]", with: "caller")
                         .trimmingCharacters(in: CharacterSet(charactersIn: "[] "))
             owner = owner.replacingOccurrences(of: "[Local]",  with: "you")
                          .replacingOccurrences(of: "[Remote]", with: "caller")
+                         .replacingOccurrences(of: "[You]",    with: "you")
+                         .replacingOccurrences(of: "[Caller]", with: "caller")
                          .trimmingCharacters(in: CharacterSet(charactersIn: "[] "))
 
             guard !task.isEmpty, task.count < 400 else { continue }
