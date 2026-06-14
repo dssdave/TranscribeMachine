@@ -31,28 +31,24 @@ struct TranscriptSegment: Identifiable {
     var labeledLine: String { "[\(speaker.rawValue)]: \(text)" }
 }
 
-// Best-to-worst preference order — first one WhisperKit has available wins
-private let kWhisperPreference = [
-    "openai_whisper-large-v3-turbo",
-    "openai_whisper-large-v3_turbo",
-    "openai_whisper-large-v3",
-    "openai_whisper-large-v2",
-    "openai_whisper-medium.en",
-    "openai_whisper-small.en",
-]
-
 // Actor isolates WhisperKit to avoid Swift 6 sendability errors
 private actor WhisperActor {
     nonisolated(unsafe) var whisper: WhisperKit?
 
     func load() async throws {
-        // Ask WhisperKit which models it actually supports in this version
-        let available = (try? await WhisperKit.fetchAvailableModels()) ?? []
-        let model = kWhisperPreference.first { available.contains($0) }
-                 ?? "openai_whisper-small.en"
-
-        let config = WhisperKitConfig(model: model, verbose: false, logLevel: .none)
-        whisper = try await WhisperKit(config)
+        // Try a better model first; fall back to small.en which is always available
+        let candidates = ["openai_whisper-large-v2", "openai_whisper-small.en"]
+        var lastError: Error?
+        for model in candidates {
+            do {
+                let config = WhisperKitConfig(model: model, verbose: false, logLevel: .none)
+                whisper = try await WhisperKit(config)
+                return
+            } catch {
+                lastError = error
+            }
+        }
+        throw lastError ?? NSError(domain: "WhisperKit", code: -1)
     }
 
     func transcribe(audioArray: [Float]) async throws -> [TranscriptionResult]? {

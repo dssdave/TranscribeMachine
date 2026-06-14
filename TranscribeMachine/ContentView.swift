@@ -55,6 +55,7 @@ struct ContentView: View {
                 ScrollView {
                     VStack(spacing: 24) {
                         recordButtons
+                        if !isReady { setupBanner }
                         if hasContent || recorder.isRecording { transcriptSection }
                         if hasContent && !recorder.isRecording { aiSection }
                         Spacer(minLength: 32)
@@ -121,7 +122,7 @@ struct ContentView: View {
     }
 
     @ViewBuilder var statusIndicator: some View {
-        if transcriber.isDownloading || whisperX.setupState == .installing || whisperX.isRunning
+        if whisperX.setupState == .installing || whisperX.isRunning
             || ollama.state == .starting || ollama.state == .downloading {
             HStack(spacing: 7) {
                 ProgressView().scaleEffect(0.6)
@@ -150,9 +151,22 @@ struct ContentView: View {
         return ""
     }
 
-    private var setupStatusLabel: String {
-        if transcriber.modelStatus == "Download failed" { return "Transcription model download failed — check your connection" }
-        return "Setting up transcription (first time only, ~800 MB)…"
+    var setupBanner: some View {
+        HStack(spacing: 10) {
+            if transcriber.modelStatus == "Download failed" {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange)
+                Text("Transcription setup failed — please check your internet connection and relaunch.")
+                    .font(.system(size: 12)).foregroundColor(Color.white.opacity(0.6))
+            } else {
+                ProgressView().scaleEffect(0.7)
+                Text("Setting up transcription engine (one-time download, may take a minute)…")
+                    .font(.system(size: 12)).foregroundColor(Color.white.opacity(0.5))
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(Color.white.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     // MARK: – Record Buttons
@@ -171,17 +185,6 @@ struct ContentView: View {
                 ) { recorder.toggleSystemAudio() }
             }
 
-            if !isReady {
-                HStack(spacing: 8) {
-                    ProgressView().scaleEffect(0.65)
-                    Text(setupStatusLabel)
-                        .font(.system(size: 12))
-                        .foregroundColor(Color.white.opacity(0.45))
-                }
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.vertical, 4)
-                .transition(.opacity)
-            }
 
             if recorder.isRecording {
                 Button { stopRecording() } label: {
