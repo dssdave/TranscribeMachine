@@ -15,9 +15,9 @@ class OllamaService: ObservableObject {
 
     enum AIState: Equatable {
         case starting       // finding / launching the server
-        case downloading    // pulling the model weights for the first time
+        case downloading    // downloading binary or model weights
         case ready
-        case unavailable    // ollama not installed on this machine
+        case unavailable    // could not set up
     }
 
     @Published var state: AIState = .starting
@@ -34,22 +34,34 @@ class OllamaService: ObservableObject {
     func setup() async {
         state = .starting
 
-        // 1. If server already up, just ensure the model is present
+        // 1. If server already up, just ensure the model is present, then check for updates
         if await serverIsRunning() {
             await ensureModel()
+            Task { await silentUpdateCheck() }
             return
         }
 
-        // 2. Try to start the server
-        if let exec = ollamaExec {
-            launchServer(exec)
-            if await waitForServer() {
-                await ensureModel()
+        // 2. Find or download the ollama binary
+        let exec: String
+        if let found = ollamaExec {
+            exec = found
+            Task { await silentUpdateCheck() }
+        } else {
+            // First time — download the binary
+            guard let downloaded = await downloadOllamaBinary() else {
+                state = .unavailable
                 return
             }
+            exec = downloaded
         }
 
-        state = .unavailable
+        // 3. Start the server and ensure the model
+        launchServer(exec)
+        if await waitForServer() {
+            await ensureModel()
+        } else {
+            state = .unavailable
+        }
     }
 
     private func ensureModel() async {
@@ -58,6 +70,103 @@ class OllamaService: ObservableObject {
         } else {
             await pullModel()
         }
+    }
+
+    // MARK: – Binary download & update
+
+    // Where we store the downloaded binary (not the user's own installation)
+    private var managedBinaryPath: String {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        return support.appendingPathComponent("TranscribeMachine/bin/ollama").path
+    }
+
+    private func downloadOllamaBinary() async -> String? {
+        downloadProgress = "Setting up AI for the first time…"
+        state = .downloading
+
+        // Fetch latest release metadata from GitHub
+        guard let releaseURL = URL(string: "https://api.github.com/repos/ollama/ollama/releases/latest"),
+              let (releaseData, _) = try? await URLSession.shared.data(from: releaseURL),
+              let release = try? JSONSerialization.jsonObject(with: releaseData) as? [String: Any],
+              let tagName = release["tag_name"] as? String,
+              let assets = release["assets"] as? [[String: Any]]
+        else {
+            downloadProgress = ""
+            return nil
+        }
+
+        // Find the macOS CLI binary (ollama-darwin, not the .app zip)
+        guard let asset = assets.first(where: {
+                  let name = ($0["name"] as? String) ?? ""
+                  return name == "ollama-darwin"
+              }),
+              let downloadURLString = asset["browser_download_url"] as? String,
+              let downloadURL = URL(string: downloadURLString)
+        else {
+            downloadProgress = ""
+            return nil
+        }
+
+        // Download with progress
+        let destPath = managedBinaryPath
+        let destURL  = URL(fileURLWithPath: destPath)
+        try? FileManager.default.createDirectory(at: destURL.deletingLastPathComponent(),
+                                                  withIntermediateDirectories: true)
+
+        do {
+            let (tmpURL, _) = try await URLSession.shared.download(from: downloadURL)
+            try? FileManager.default.removeItem(at: destURL)
+            try FileManager.default.moveItem(at: tmpURL, to: destURL)
+            // Make executable and clear macOS quarantine
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: destPath)
+            removeQuarantine(destPath)
+            UserDefaults.standard.set(tagName, forKey: "ollamaBinaryVersion")
+            downloadProgress = ""
+            return destPath
+        } catch {
+            downloadProgress = ""
+            return nil
+        }
+    }
+
+    // Silent weekly update check — downloads newer binary to managed path if available
+    private func silentUpdateCheck() async {
+        let lastCheck = UserDefaults.standard.double(forKey: "ollamaUpdateCheck")
+        let weekSeconds: Double = 7 * 24 * 3600
+        guard Date().timeIntervalSince1970 - lastCheck > weekSeconds else { return }
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "ollamaUpdateCheck")
+
+        guard let releaseURL = URL(string: "https://api.github.com/repos/ollama/ollama/releases/latest"),
+              let (data, _) = try? await URLSession.shared.data(from: releaseURL),
+              let release = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let latestTag = release["tag_name"] as? String
+        else { return }
+
+        let installedTag = UserDefaults.standard.string(forKey: "ollamaBinaryVersion") ?? ""
+        guard latestTag != installedTag else { return }
+
+        // Newer version available — download it in the background (used on next launch)
+        guard let assets = release["assets"] as? [[String: Any]],
+              let asset = assets.first(where: { ($0["name"] as? String) == "ollama-darwin" }),
+              let urlString = asset["browser_download_url"] as? String,
+              let url = URL(string: urlString)
+        else { return }
+
+        let destURL = URL(fileURLWithPath: managedBinaryPath)
+        guard let (tmpURL, _) = try? await URLSession.shared.download(from: url) else { return }
+        try? FileManager.default.removeItem(at: destURL)
+        guard (try? FileManager.default.moveItem(at: tmpURL, to: destURL)) != nil else { return }
+        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: managedBinaryPath)
+        removeQuarantine(managedBinaryPath)
+        UserDefaults.standard.set(latestTag, forKey: "ollamaBinaryVersion")
+    }
+
+    private func removeQuarantine(_ path: String) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
+        p.arguments = ["-d", "com.apple.quarantine", path]
+        try? p.run()
+        p.waitUntilExit()
     }
 
     // MARK: – Public entry point
@@ -241,10 +350,10 @@ class OllamaService: ObservableObject {
     private var ollamaExec: String? {
         let home = NSHomeDirectory()
         let candidates = [
-            "/usr/local/bin/ollama",
+            managedBinaryPath,                                   // our downloaded/updated copy (preferred)
+            "/usr/local/bin/ollama",                             // user's own installation
             "/opt/homebrew/bin/ollama",
-            "\(home)/.ollama/bin/ollama",
-            "\(home)/Library/Application Support/TranscribeMachine/ollama"
+            "\(home)/.ollama/bin/ollama"
         ]
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
