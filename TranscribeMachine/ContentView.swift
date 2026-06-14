@@ -142,12 +142,19 @@ struct ContentView: View {
     }
 
     private var currentStatusLabel: String {
-        if transcriber.isDownloading { return "Downloading… \(Int(transcriber.downloadProgress * 100))%" }
+        if transcriber.isDownloading { return setupStatusLabel }
         if whisperX.setupState == .installing { return "Setting up…" }
         if whisperX.isRunning { return whisperX.progress.isEmpty ? "Analyzing…" : whisperX.progress }
         if ollama.state == .downloading { return ollama.downloadProgress }
         if ollama.state == .starting { return "Starting AI…" }
         return ""
+    }
+
+    private var setupStatusLabel: String {
+        if transcriber.modelStatus == "Loading…" { return "Loading transcription model…" }
+        let pct = Int(transcriber.downloadProgress * 100)
+        if pct > 0 { return "Downloading transcription model… \(pct)%" }
+        return "Downloading transcription model (first time only, ~800 MB)…"
     }
 
     // MARK: – Record Buttons
@@ -164,6 +171,18 @@ struct ContentView: View {
                     title: "Computer Audio", subtitle: "Zoom / Meet / Remote", icon: "speaker.wave.2.fill",
                     accentColor: speakerPalette[1], isActive: recorder.systemActive, isDisabled: !isReady
                 ) { recorder.toggleSystemAudio() }
+            }
+
+            if !isReady {
+                HStack(spacing: 8) {
+                    ProgressView().scaleEffect(0.65)
+                    Text(setupStatusLabel)
+                        .font(.system(size: 12))
+                        .foregroundColor(Color.white.opacity(0.45))
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 4)
+                .transition(.opacity)
             }
 
             if recorder.isRecording {
