@@ -50,9 +50,7 @@ class OllamaService: ObservableObject {
                 actionItems: []
             )
         }
-
         let model = await resolveModel()
-
         switch action {
         case .recap:     return await generateRecap(transcript: transcript, options: options, model: model)
         case .decisions: return await generateDecisions(transcript: transcript, model: model)
@@ -67,7 +65,9 @@ class OllamaService: ObservableObject {
         var prompt = """
         You are a meeting analyst. Read the transcript below and write a clear meeting recap.
 
-        Speaker key: [Local] = person in the room with the microphone, [Remote] = caller on Zoom or phone.
+        The transcript uses two speakers:
+        - [Local] is the person in the room with the microphone (think of them as "you")
+        - [Remote] is the caller on Zoom, phone, or video
 
         Write in plain prose. Include:
         - A 2 to 3 sentence summary of what was discussed
@@ -76,10 +76,7 @@ class OllamaService: ObservableObject {
         """
 
         if options.includeActionItems {
-            prompt += "\n\nThen list every action item using exactly this format (one per line):\n"
-            prompt += "ACTION: [task]"
-            if options.includeOwners { prompt += " — Owner: [Local/Remote/name]" }
-            if options.includeDeadlines { prompt += " — Due: [deadline or Not specified]" }
+            prompt += actionItemInstruction(owners: options.includeOwners, deadlines: options.includeDeadlines)
         }
 
         prompt += formatRule + "\n\nTranscript:\n\(transcript)"
@@ -93,11 +90,13 @@ class OllamaService: ObservableObject {
 
     private func generateDecisions(transcript: String, model: String) async -> AIResult {
         let prompt = """
-        You are a meeting analyst. Read the transcript below and extract only the key decisions that were made or agreed upon.
+        You are a meeting analyst. Read the transcript below and extract only the firm decisions made or agreed upon.
 
-        Speaker key: [Local] = person in the room with the microphone, [Remote] = caller on Zoom or phone.
+        The transcript uses two speakers:
+        - [Local] is the person in the room with the microphone
+        - [Remote] is the caller on Zoom, phone, or video
 
-        List each decision on its own line. Start each line with "DECISION:" followed by a clear, one-sentence statement of what was decided and who will act on it if relevant. Do not include discussion, only firm decisions.
+        List each decision clearly and concisely. Do not include discussion or speculation, only decisions that were actually agreed on.
         \(formatRule)
 
         Transcript:
@@ -112,25 +111,14 @@ class OllamaService: ObservableObject {
 
     private func generateNextSteps(transcript: String, options: AIOptions, model: String) async -> AIResult {
         var prompt = """
-        You are a meeting analyst. Read the transcript below and produce a focused next-steps list.
+        You are a meeting analyst. Read the transcript below and list every follow-up task, commitment, or thing that needs to happen after this meeting.
 
-        Speaker key: [Local] = person in the room with the microphone, [Remote] = caller on Zoom or phone.
-
-        List every follow-up task, commitment, or thing that needs to happen after this meeting.
+        The transcript uses two speakers:
+        - [Local] is the person in the room with the microphone (refer to them as "you")
+        - [Remote] is the caller on Zoom, phone, or video (refer to them as "caller" or their name if mentioned)
         """
 
-        if options.includeOwners {
-            prompt += " For each item, note who is responsible (Local, Remote, or a name if mentioned)."
-        }
-        if options.includeDeadlines {
-            prompt += " Include any deadline or timeframe mentioned."
-        }
-
-        prompt += "\n\nUse this format for each item (one per line):\n"
-        prompt += "ACTION: [task]"
-        if options.includeOwners { prompt += " — Owner: [name or Local/Remote]" }
-        if options.includeDeadlines { prompt += " — Due: [deadline or Not specified]" }
-
+        prompt += actionItemInstruction(owners: options.includeOwners, deadlines: options.includeDeadlines)
         prompt += formatRule + "\n\nTranscript:\n\(transcript)"
 
         let raw = await generate(prompt: prompt, model: model)
@@ -144,7 +132,9 @@ class OllamaService: ObservableObject {
         var prompt = """
         You are a professional email writer. Based on the meeting transcript below, write a follow-up email.
 
-        Speaker key: [Local] = person in the room with the microphone, [Remote] = caller on Zoom or phone.
+        The transcript uses two speakers:
+        - [Local] is the person in the room with the microphone — this is the email sender
+        - [Remote] is the caller on Zoom, phone, or video — this is the email recipient
 
         The email should include:
         - Subject line
@@ -159,13 +149,11 @@ class OllamaService: ObservableObject {
             if options.includeDeadlines { prompt += " and any deadlines" }
         }
 
-        prompt += "\n        - Professional closing\n\nUse [Your Name] as a placeholder for the sender."
+        prompt += "\n        - Professional closing\n\nUse [Your Name] for the sender."
 
         if options.includeActionItems {
-            prompt += "\n\nAfter the email body, list action items using this format (one per line):\n"
-            prompt += "ACTION: [task]"
-            if options.includeOwners { prompt += " — Owner: [name or Local/Remote]" }
-            if options.includeDeadlines { prompt += " — Due: [deadline or Not specified]" }
+            prompt += actionItemInstruction(owners: options.includeOwners, deadlines: options.includeDeadlines,
+                                            intro: "\n\nAfter the email body, list each action item:")
         }
 
         prompt += formatRule + "\n\nTranscript:\n\(transcript)"
@@ -177,11 +165,28 @@ class OllamaService: ObservableObject {
 
     // MARK: – Prompt helpers
 
+    private func actionItemInstruction(owners: Bool, deadlines: Bool, intro: String = "\n\nList each action item:") -> String {
+        var s = intro + "\n"
+        s += "ACTION: what needs to be done"
+        if owners  { s += " — Owner: you / caller / their name" }
+        if deadlines { s += " — Due: specific deadline or none" }
+        s += """
+
+
+        Rules for action items:
+        - One action item per line, starting with "ACTION:"
+        - Do not number them
+        - For Owner: write "you" if it is the in-room person's task, "caller" if it is the remote person's task, or the person's actual name if mentioned
+        - Do not write [Local] or [Remote] anywhere in the output
+        """
+        return s
+    }
+
     private let formatRule = """
 
 
     IMPORTANT: Plain text only. No markdown. No asterisks, no pound signs, no underscores for emphasis. \
-    Use numbered lists or plain line breaks instead of bullet symbols.
+    Use plain line breaks instead of bullet symbols.
     """
 
     private func stripMarkdown(_ text: String) -> String {
@@ -233,28 +238,73 @@ class OllamaService: ObservableObject {
     }
 
     // MARK: – Parse action items
+    // Handles: numbered prefixes, owner on continuation line, multiple separator styles
 
     private func parseActionItems(from text: String) -> [ActionItem] {
-        var items: [ActionItem] = []
-        for line in text.components(separatedBy: "\n") {
-            guard line.uppercased().hasPrefix("ACTION:") else { continue }
-            let content = String(line.dropFirst(7)).trimmingCharacters(in: .whitespaces)
+        // Pre-process: merge ACTION: lines with orphan "- Owner:" / "- Due:" continuation lines
+        let rawLines = text.components(separatedBy: "\n")
+        var merged: [String] = []
+        var i = 0
+        while i < rawLines.count {
+            var line = rawLines[i].trimmingCharacters(in: .whitespaces)
+            // Strip leading "1." or "1)" numbering
+            if let r = line.range(of: #"^\d+[\.\)]\s+"#, options: .regularExpression) {
+                line = String(line[r.upperBound...])
+            }
+            if line.uppercased().hasPrefix("ACTION:") {
+                // Absorb continuation lines that are orphaned owner/due fields
+                var j = i + 1
+                while j < rawLines.count {
+                    let next = rawLines[j].trimmingCharacters(in: .whitespaces)
+                    let lower = next.lowercased()
+                    if lower.hasPrefix("- owner:") || lower.hasPrefix("owner:") ||
+                       lower.hasPrefix("- due:")   || lower.hasPrefix("due:") {
+                        let stripped = next.trimmingCharacters(in: CharacterSet(charactersIn: "- "))
+                        line += " — " + stripped
+                        j += 1
+                    } else { break }
+                }
+                i = j
+                merged.append(line)
+            } else {
+                i += 1
+            }
+        }
 
+        var items: [ActionItem] = []
+        for line in merged {
+            let content = String(line.dropFirst(7)).trimmingCharacters(in: .whitespaces)
             var task = content
             var owner = "Unknown"
             var due = "Not specified"
 
-            if let ownerRange = content.range(of: "— Owner:", options: .caseInsensitive) {
-                task = String(content[content.startIndex..<ownerRange.lowerBound]).trimmingCharacters(in: .whitespaces)
-                let after = String(content[ownerRange.upperBound...]).trimmingCharacters(in: .whitespaces)
-                if let dueRange = after.range(of: "— Due:", options: .caseInsensitive) {
-                    owner = String(after[after.startIndex..<dueRange.lowerBound]).trimmingCharacters(in: .whitespaces)
-                    due   = String(after[dueRange.upperBound...]).trimmingCharacters(in: .whitespaces)
-                } else {
-                    owner = after
+            for ownerKey in ["— Owner:", "- Owner:", "| Owner:", "Owner:"] {
+                if let range = content.range(of: ownerKey, options: .caseInsensitive) {
+                    task = String(content[content.startIndex..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
+                    let after = String(content[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+                    for dueKey in ["— Due:", "- Due:", "| Due:", "Due:"] {
+                        if let dueRange = after.range(of: dueKey, options: .caseInsensitive) {
+                            owner = String(after[after.startIndex..<dueRange.lowerBound]).trimmingCharacters(in: .whitespaces)
+                            let dueStr = String(after[dueRange.upperBound...]).trimmingCharacters(in: .whitespaces)
+                            due = ["none", "n/a", "not specified", "tbd", ""].contains(dueStr.lowercased())
+                                ? "Not specified" : dueStr
+                            break
+                        }
+                    }
+                    if owner == "Unknown" { owner = after }
+                    break
                 }
             }
 
+            // Sanitize any residual bracket notation the model still outputs
+            task  = task.replacingOccurrences(of: "[Local]",  with: "you")
+                        .replacingOccurrences(of: "[Remote]", with: "caller")
+                        .trimmingCharacters(in: CharacterSet(charactersIn: "[] "))
+            owner = owner.replacingOccurrences(of: "[Local]",  with: "you")
+                         .replacingOccurrences(of: "[Remote]", with: "caller")
+                         .trimmingCharacters(in: CharacterSet(charactersIn: "[] "))
+
+            guard !task.isEmpty, task.count < 400 else { continue }
             items.append(ActionItem(task: task, owner: owner, due: due))
         }
         return items

@@ -1,7 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-// Speaker color palette — up to 8 distinct speakers
 private let speakerPalette: [Color] = [
     Color(red: 0.40, green: 0.60, blue: 1.00),
     Color(red: 0.80, green: 0.45, blue: 1.00),
@@ -21,16 +20,15 @@ struct ContentView: View {
     @StateObject private var ollama      = OllamaService()
 
     @State private var aiResult: AIResult?
-    @State private var isProcessingAI   = false
+    @State private var isProcessingAI = false
     @State private var selectedAction: AIAction = .recap
-    @State private var options          = AIOptions()
+    @State private var options = AIOptions()
     @State private var copiedTranscript = false
-    @State private var copiedAI         = false
-    @State private var showActionItems  = true
+    @State private var copiedAI = false
 
     @AppStorage("silenceTimeoutMinutes") private var silenceTimeoutMinutes: Int = 10
 
-    @State private var showSettings      = false
+    @State private var showSettings = false
     @State private var diarizedSegments: [DiarizedSegment] = []
     @State private var speakerNames: [String: String] = [:]
     @State private var renamingKey: String?
@@ -66,6 +64,7 @@ struct ContentView: View {
             }
 
             if renamingKey != nil { renameOverlay }
+            if showSettings    { settingsOverlay }
         }
         .preferredColorScheme(.dark)
         .onAppear {
@@ -105,10 +104,9 @@ struct ContentView: View {
                     .foregroundColor(Color.white.opacity(0.3))
             }
             Spacer()
-            // Single subtle status indicator
             statusIndicator
             Button {
-                showSettings = true
+                withAnimation(.easeInOut(duration: 0.15)) { showSettings = true }
             } label: {
                 Image(systemName: "gearshape")
                     .font(.system(size: 15))
@@ -116,9 +114,6 @@ struct ContentView: View {
             }
             .buttonStyle(.plain)
             .padding(.leading, 12)
-            .sheet(isPresented: $showSettings) {
-                SettingsView(recorder: recorder, ollama: ollama)
-            }
         }
         .padding(.horizontal, 32)
         .padding(.vertical, 16)
@@ -145,9 +140,7 @@ struct ContentView: View {
     }
 
     private var currentStatusLabel: String {
-        if transcriber.isDownloading {
-            return "Downloading… \(Int(transcriber.downloadProgress * 100))%"
-        }
+        if transcriber.isDownloading { return "Downloading… \(Int(transcriber.downloadProgress * 100))%" }
         if whisperX.setupState == .installing { return "Setting up…" }
         if whisperX.isRunning { return whisperX.progress.isEmpty ? "Analyzing…" : whisperX.progress }
         return ""
@@ -159,21 +152,13 @@ struct ContentView: View {
         VStack(spacing: 12) {
             HStack(spacing: 16) {
                 RecordButton(
-                    title: "Microphone",
-                    subtitle: "In-room",
-                    icon: "mic.fill",
-                    accentColor: speakerPalette[0],
-                    isActive: recorder.micActive,
-                    isDisabled: !isReady
+                    title: "Microphone", subtitle: "In-room", icon: "mic.fill",
+                    accentColor: speakerPalette[0], isActive: recorder.micActive, isDisabled: !isReady
                 ) { recorder.toggleMic() }
 
                 RecordButton(
-                    title: "Computer Audio",
-                    subtitle: "Zoom / Meet / Remote",
-                    icon: "speaker.wave.2.fill",
-                    accentColor: speakerPalette[1],
-                    isActive: recorder.systemActive,
-                    isDisabled: !isReady
+                    title: "Computer Audio", subtitle: "Zoom / Meet / Remote", icon: "speaker.wave.2.fill",
+                    accentColor: speakerPalette[1], isActive: recorder.systemActive, isDisabled: !isReady
                 ) { recorder.toggleSystemAudio() }
             }
 
@@ -226,10 +211,7 @@ struct ContentView: View {
                     .foregroundColor(Color.white.opacity(0.4))
                     .textCase(.uppercase)
                     .kerning(0.6)
-
-                if showingDiarized {
-                    speakerCountBadge
-                }
+                if showingDiarized { speakerCountBadge }
                 Spacer()
                 if recorder.isRecording {
                     RecordingPulse()
@@ -237,16 +219,13 @@ struct ContentView: View {
                         .font(.system(size: 10, weight: .medium, design: .monospaced))
                         .foregroundColor(Color.white.opacity(0.35))
                 }
-
                 tinyButton(icon: copiedTranscript ? "checkmark" : "doc.on.doc",
                            label: copiedTranscript ? "Copied" : "Copy") {
                     copy(showingDiarized ? diarizedTranscriptText : transcriber.fullTranscript)
                     copiedTranscript = true
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copiedTranscript = false }
                 }
-                tinyButton(icon: "square.and.arrow.up", label: "Export") {
-                    exportTranscript()
-                }
+                tinyButton(icon: "square.and.arrow.up", label: "Export") { exportTranscript() }
                 tinyButton(icon: "trash", label: "Clear") {
                     transcriber.clear(); diarizedSegments = []; aiResult = nil
                 }
@@ -257,9 +236,7 @@ struct ContentView: View {
                     LazyVStack(alignment: .leading, spacing: 5) {
                         if showingDiarized {
                             ForEach(diarizedSegments) { seg in
-                                DiarizedRow(seg: seg,
-                                            name: displayName(seg),
-                                            color: color(for: seg)) {
+                                DiarizedRow(seg: seg, name: displayName(seg), color: color(for: seg)) {
                                     startRename(seg)
                                 }
                                 .id(seg.id)
@@ -314,36 +291,36 @@ struct ContentView: View {
     // MARK: – AI Section
 
     var aiSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Label("AI", systemImage: "sparkles")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(Color.white.opacity(0.4))
-                    .textCase(.uppercase)
-                    .kerning(0.6)
-                Spacer()
-                Picker("", selection: $selectedAction) {
-                    ForEach(AIAction.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 290)
+        VStack(alignment: .leading, spacing: 14) {
 
-                Button { runAI() } label: {
-                    Group {
-                        if isProcessingAI {
-                            ProgressView().scaleEffect(0.7).frame(width: 50)
-                        } else {
-                            Text("Run").frame(width: 50)
+            // Four tap-to-run action buttons
+            HStack(spacing: 8) {
+                ForEach(AIAction.allCases, id: \.self) { action in
+                    Button {
+                        selectedAction = action
+                        runAI()
+                    } label: {
+                        HStack(spacing: 5) {
+                            if isProcessingAI && selectedAction == action {
+                                ProgressView().scaleEffect(0.55).frame(width: 10, height: 10)
+                            }
+                            Text(action.rawValue)
+                                .font(.system(size: 12, weight: .semibold))
+                                .lineLimit(1)
                         }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 9)
                     }
-                    .font(.system(size: 12, weight: .semibold))
+                    .buttonStyle(ActionButtonStyle(
+                        isSelected: selectedAction == action && aiResult != nil && !isProcessingAI
+                    ))
+                    .disabled(isProcessingAI)
                 }
-                .buttonStyle(PillButtonStyle(color: speakerPalette[1]))
-                .disabled(isProcessingAI)
             }
 
+            // Options — hidden for Decisions which has no follow-ups
             if selectedAction != .decisions {
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     Toggle("Action Items", isOn: $options.includeActionItems)
                     if options.includeActionItems {
                         Toggle("Owners",    isOn: $options.includeOwners)
@@ -354,12 +331,12 @@ struct ContentView: View {
                 .toggleStyle(ChipToggleStyle())
             }
 
-            if !ollama.isAvailable {
-                OllamaNotice()
-            }
+            if !ollama.isAvailable { OllamaNotice() }
 
             if let result = aiResult {
                 VStack(alignment: .leading, spacing: 12) {
+
+                    // Main output text
                     ScrollView {
                         Text(result.main)
                             .font(.system(size: 14))
@@ -368,44 +345,62 @@ struct ContentView: View {
                             .padding(16)
                             .textSelection(.enabled)
                     }
-                    .frame(minHeight: 120, maxHeight: 300)
+                    .frame(minHeight: 100, maxHeight: 320)
                     .background(Color.white.opacity(0.04))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12)
-                        .stroke(speakerPalette[1].opacity(0.2), lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.07), lineWidth: 1))
 
+                    // Follow-ups — clean arrow list, no checkboxes or green card
                     if !result.actionItems.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Label("Action Items", systemImage: "checkmark.circle")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(Color.white.opacity(0.4))
-                                Spacer()
-                                Button(showActionItems ? "Hide" : "Show") {
-                                    withAnimation { showActionItems.toggle() }
-                                }
-                                .buttonStyle(.plain)
-                                .font(.system(size: 11))
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Follow-ups")
+                                .font(.system(size: 10, weight: .semibold))
                                 .foregroundColor(Color.white.opacity(0.35))
-                            }
-                            if showActionItems {
-                                ForEach(result.actionItems) { ActionItemRow(item: $0) }
+                                .textCase(.uppercase)
+                                .kerning(0.8)
+                            ForEach(result.actionItems) { item in
+                                HStack(alignment: .top, spacing: 10) {
+                                    Text("→")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(Color.white.opacity(0.25))
+                                        .padding(.top, 1)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.task)
+                                            .font(.system(size: 13))
+                                            .foregroundColor(Color.white.opacity(0.85))
+                                            .textSelection(.enabled)
+                                        let meta = [
+                                            item.owner != "Unknown" ? item.owner : nil,
+                                            item.due   != "Not specified" ? item.due : nil
+                                        ].compactMap { $0 }.joined(separator: " · ")
+                                        if !meta.isEmpty {
+                                            Text(meta)
+                                                .font(.system(size: 11))
+                                                .foregroundColor(Color.white.opacity(0.35))
+                                        }
+                                    }
+                                }
                             }
                         }
                         .padding(14)
-                        .background(Color(red: 0.08, green: 0.14, blue: 0.08))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .overlay(RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.green.opacity(0.12), lineWidth: 1))
+                        .background(Color.white.opacity(0.04))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
 
                     HStack {
                         Spacer()
                         Button {
-                            let full = result.actionItems.isEmpty ? result.main :
-                                result.main + "\n\nACTION ITEMS:\n" +
-                                result.actionItems.map { "• \($0.task) — \($0.owner) — \($0.due)" }.joined(separator: "\n")
-                            copy(full)
+                            var lines = [result.main]
+                            if !result.actionItems.isEmpty {
+                                lines.append("\nFOLLOW-UPS:")
+                                lines.append(contentsOf: result.actionItems.map { item in
+                                    var s = "→ \(item.task)"
+                                    if item.owner != "Unknown"       { s += "  (\(item.owner))" }
+                                    if item.due   != "Not specified" { s += "  — \(item.due)" }
+                                    return s
+                                })
+                            }
+                            copy(lines.joined(separator: "\n"))
                             copiedAI = true
                             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copiedAI = false }
                         } label: {
@@ -447,6 +442,92 @@ struct ContentView: View {
         }
     }
 
+    // MARK: – Settings overlay (tap outside to dismiss)
+
+    var settingsOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.45).ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.15)) { showSettings = false }
+                }
+
+            VStack(alignment: .leading, spacing: 22) {
+                HStack {
+                    Text("Settings")
+                        .font(.system(size: 18, weight: .semibold)).foregroundColor(.white)
+                    Spacer()
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) { showSettings = false }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(Color.white.opacity(0.3))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Divider().background(Color.white.opacity(0.1))
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Microphone")
+                        .font(.system(size: 12, weight: .medium)).foregroundColor(Color.white.opacity(0.5))
+                    Picker("", selection: $recorder.selectedMicID) {
+                        ForEach(recorder.availableMics, id: \.uniqueID) { dev in
+                            Text(dev.localizedName).tag(dev.uniqueID)
+                        }
+                    }
+                    .labelsHidden()
+                    .disabled(recorder.micActive)
+                    if recorder.micActive {
+                        Text("Stop recording to change mic")
+                            .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
+                    }
+                }
+
+                Divider().background(Color.white.opacity(0.1))
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Auto-Stop")
+                        .font(.system(size: 12, weight: .medium)).foregroundColor(Color.white.opacity(0.5))
+                    Picker("", selection: $silenceTimeoutMinutes) {
+                        Text("Never").tag(0)
+                        Text("5 min").tag(5)
+                        Text("10 min").tag(10)
+                        Text("15 min").tag(15)
+                        Text("30 min").tag(30)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    Text("Recording stops if no audio is detected for this long.")
+                        .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
+                }
+
+                if !ollama.availableModels.isEmpty {
+                    Divider().background(Color.white.opacity(0.1))
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("AI Model")
+                            .font(.system(size: 12, weight: .medium)).foregroundColor(Color.white.opacity(0.5))
+                        Picker("", selection: $ollama.selectedModel) {
+                            ForEach(ollama.availableModels, id: \.self) { Text($0).tag($0) }
+                        }
+                        .labelsHidden()
+                        .onChange(of: ollama.selectedModel) { model in
+                            UserDefaults.standard.set(model, forKey: "ollamaModel")
+                        }
+                    }
+                }
+
+                Spacer()
+            }
+            .padding(28)
+            .frame(width: 380, height: 400)
+            .background(Color(red: 0.10, green: 0.10, blue: 0.13))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .shadow(color: .black.opacity(0.5), radius: 40)
+            .onAppear { recorder.refreshMicList() }
+        }
+    }
+
     // MARK: – Logic
 
     private func checkSilenceTimeout() {
@@ -470,7 +551,6 @@ struct ContentView: View {
 
     private func stopRecording() {
         recorder.stopAll()
-        // Auto-diarize if whisperX is ready — silent, no user action needed
         guard whisperX.isReady,
               recorder.localFileURL != nil || recorder.remoteFileURL != nil else { return }
         Task {
@@ -588,14 +668,13 @@ struct LiveRow: View {
     let seg: TranscriptSegment
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            HStack(spacing: 4) {
-                Image(systemName: seg.speaker.icon).font(.system(size: 8))
-            }
-            .foregroundColor(seg.speaker.color)
-            .padding(.horizontal, 6).padding(.vertical, 3)
-            .background(seg.speaker.color.opacity(0.12))
-            .clipShape(Capsule())
-            .frame(width: 26, alignment: .center)
+            Image(systemName: seg.speaker.icon)
+                .font(.system(size: 8))
+                .foregroundColor(seg.speaker.color)
+                .padding(.horizontal, 6).padding(.vertical, 4)
+                .background(seg.speaker.color.opacity(0.12))
+                .clipShape(Capsule())
+                .frame(width: 26, alignment: .center)
 
             Text(seg.text)
                 .font(.system(size: 13))
@@ -608,24 +687,6 @@ struct LiveRow: View {
 }
 
 // MARK: – Shared UI Components
-
-struct ActionItemRow: View {
-    let item: ActionItem
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "checkmark.circle").foregroundColor(.green.opacity(0.7))
-                .font(.system(size: 13)).padding(.top, 1)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.task).font(.system(size: 13)).foregroundColor(Color.white.opacity(0.85))
-                HStack(spacing: 10) {
-                    Label(item.owner, systemImage: "person.fill")
-                    if item.due != "Not specified" { Label(item.due, systemImage: "calendar") }
-                }
-                .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.4))
-            }
-        }
-    }
-}
 
 struct RecordButton: View {
     let title: String; let subtitle: String; let icon: String
@@ -700,6 +761,22 @@ struct OllamaNotice: View {
     }
 }
 
+struct ActionButtonStyle: ButtonStyle {
+    let isSelected: Bool
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundColor(isSelected ? .white : Color.white.opacity(0.6))
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected
+                          ? Color.white.opacity(0.14)
+                          : Color.white.opacity(configuration.isPressed ? 0.09 : 0.05))
+                    .overlay(RoundedRectangle(cornerRadius: 8)
+                        .stroke(isSelected ? Color.white.opacity(0.2) : Color.white.opacity(0.09), lineWidth: 1))
+            )
+    }
+}
+
 struct PillButtonStyle: ButtonStyle {
     let color: Color
     func makeBody(configuration: Configuration) -> some View {
@@ -734,96 +811,6 @@ struct ChipToggleStyle: ToggleStyle {
             .overlay(Capsule().stroke(Color.white.opacity(configuration.isOn ? 0.2 : 0.07), lineWidth: 1))
         }
         .buttonStyle(.plain)
-    }
-}
-
-// MARK: – Settings Sheet
-
-struct SettingsView: View {
-    @ObservedObject var recorder: AudioFileRecorder
-    @ObservedObject var ollama: OllamaService
-    @Environment(\.dismiss) private var dismiss
-    @AppStorage("silenceTimeoutMinutes") private var silenceTimeoutMinutes: Int = 10
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            HStack {
-                Text("Settings")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.white)
-                Spacer()
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(Color.white.opacity(0.3))
-                }
-                .buttonStyle(.plain)
-            }
-
-            Divider().background(Color.white.opacity(0.1))
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Microphone")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(Color.white.opacity(0.5))
-                Picker("", selection: $recorder.selectedMicID) {
-                    ForEach(recorder.availableMics, id: \.uniqueID) { dev in
-                        Text(dev.localizedName).tag(dev.uniqueID)
-                    }
-                }
-                .labelsHidden()
-                .disabled(recorder.micActive)
-                if recorder.micActive {
-                    Text("Stop recording to change mic")
-                        .font(.system(size: 11))
-                        .foregroundColor(Color.white.opacity(0.3))
-                }
-            }
-
-            Divider().background(Color.white.opacity(0.1))
-
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Auto-Stop")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(Color.white.opacity(0.5))
-                Picker("Stop after silence", selection: $silenceTimeoutMinutes) {
-                    Text("Never").tag(0)
-                    Text("5 min").tag(5)
-                    Text("10 min").tag(10)
-                    Text("15 min").tag(15)
-                    Text("30 min").tag(30)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                Text("Recording stops automatically if no audio is detected.")
-                    .font(.system(size: 11))
-                    .foregroundColor(Color.white.opacity(0.3))
-            }
-
-            if !ollama.availableModels.isEmpty {
-                Divider().background(Color.white.opacity(0.1))
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("AI Model")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(Color.white.opacity(0.5))
-                    Picker("", selection: $ollama.selectedModel) {
-                        ForEach(ollama.availableModels, id: \.self) { Text($0).tag($0) }
-                    }
-                    .labelsHidden()
-                    .onChange(of: ollama.selectedModel) { model in
-                        UserDefaults.standard.set(model, forKey: "ollamaModel")
-                    }
-                }
-            }
-
-            Spacer()
-        }
-        .padding(28)
-        .frame(width: 380, height: 420)
-        .background(Color(red: 0.08, green: 0.08, blue: 0.1))
-        .preferredColorScheme(.dark)
-        .onAppear { recorder.refreshMicList() }
     }
 }
 
