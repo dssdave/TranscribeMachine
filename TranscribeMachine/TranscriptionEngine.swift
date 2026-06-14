@@ -37,7 +37,7 @@ private actor WhisperActor {
 
     func load() async throws {
         let config = WhisperKitConfig(
-            model: "openai_whisper-small.en",
+            model: "openai_whisper-large-v3-turbo",
             verbose: false,
             logLevel: .none
         )
@@ -72,7 +72,7 @@ class TranscriptionEngine: ObservableObject {
     private let whisperActor = WhisperActor()
     private var micBuffer: [Float] = []
     private var systemBuffer: [Float] = []
-    private let chunkSamples = Int(5.0 * 16000.0)
+    private let chunkSamples = Int(8.0 * 16000.0)
     private var isMicTranscribing = false
     private var isSystemTranscribing = false
 
