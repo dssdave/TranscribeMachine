@@ -56,6 +56,9 @@ class TranscriptionEngine: ObservableObject {
     @Published var isDownloading = false
     @Published var downloadProgress: Double = 0
     @Published var modelStatus: String = "Not downloaded"
+    @Published var lastActivityDate: Date?
+
+    func resetActivity() { lastActivityDate = nil }
 
     var fullTranscript: String {
         segments.map { $0.labeledLine }.joined(separator: "\n")
@@ -127,6 +130,7 @@ class TranscriptionEngine: ObservableObject {
 
     private func transcribeChunk(_ chunk: [Float], speaker: TranscriptSegment.Speaker) {
         guard !isSilent(chunk) else { return }
+        lastActivityDate = Date()
         if speaker == .local { isMicTranscribing = true }
         else { isSystemTranscribing = true }
 

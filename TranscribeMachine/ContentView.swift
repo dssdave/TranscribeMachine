@@ -27,11 +27,16 @@ struct ContentView: View {
     @State private var copiedAI         = false
     @State private var showActionItems  = true
 
+    @AppStorage("silenceTimeoutMinutes") private var silenceTimeoutMinutes: Int = 10
+
     @State private var showSettings      = false
     @State private var diarizedSegments: [DiarizedSegment] = []
     @State private var speakerNames: [String: String] = [:]
     @State private var renamingKey: String?
     @State private var renameText = ""
+    @State private var recordingStartDate: Date?
+
+    private let silenceTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
     private var showingDiarized: Bool { !diarizedSegments.isEmpty }
     private var hasContent: Bool { !transcriber.segments.isEmpty || !diarizedSegments.isEmpty }
@@ -48,7 +53,7 @@ struct ContentView: View {
                     VStack(spacing: 24) {
                         recordButtons
                         if hasContent || recorder.isRecording { transcriptSection }
-                        if hasContent { aiSection }
+                        if hasContent && !recorder.isRecording { aiSection }
                         Spacer(minLength: 32)
                     }
                     .padding(.horizontal, 32)
@@ -62,9 +67,19 @@ struct ContentView: View {
         .onAppear {
             recorder.transcriptionEngine = transcriber
             recorder.refreshMicList()
-            // Everything downloads silently on launch
             transcriber.prepareModel()
             whisperX.installIfNeeded()
+        }
+        .onChange(of: recorder.isRecording) { isRecording in
+            if isRecording {
+                recordingStartDate = Date()
+                transcriber.resetActivity()
+            } else {
+                recordingStartDate = nil
+            }
+        }
+        .onReceive(silenceTimer) { _ in
+            checkSilenceTimeout()
         }
     }
 
@@ -272,7 +287,7 @@ struct ContentView: View {
                     ForEach(AIAction.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 200)
+                .frame(width: 290)
 
                 Button { runAI() } label: {
                     Group {
@@ -394,6 +409,15 @@ struct ContentView: View {
 
     // MARK: – Logic
 
+    private func checkSilenceTimeout() {
+        guard recorder.isRecording else { return }
+        let reference = transcriber.lastActivityDate ?? recordingStartDate
+        guard let ref = reference else { return }
+        if Date().timeIntervalSince(ref) >= Double(silenceTimeoutMinutes) * 60 {
+            stopRecording()
+        }
+    }
+
     private func stopRecording() {
         recorder.stopAll()
         // Auto-diarize if whisperX is ready — silent, no user action needed
@@ -501,7 +525,6 @@ struct LiveRow: View {
         HStack(alignment: .top, spacing: 10) {
             HStack(spacing: 4) {
                 Image(systemName: seg.speaker.icon).font(.system(size: 8))
-                Text(seg.speaker.rawValue).font(.system(size: 10, weight: .semibold))
             }
             .foregroundColor(seg.speaker.color)
             .padding(.horizontal, 8).padding(.vertical, 3)
@@ -654,6 +677,7 @@ struct ChipToggleStyle: ToggleStyle {
 struct SettingsView: View {
     @ObservedObject var recorder: AudioFileRecorder
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("silenceTimeoutMinutes") private var silenceTimeoutMinutes: Int = 10
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -690,10 +714,29 @@ struct SettingsView: View {
                 }
             }
 
+            Divider().background(Color.white.opacity(0.1))
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Auto-Stop")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(Color.white.opacity(0.5))
+                HStack {
+                    Text("Stop after silence:")
+                        .font(.system(size: 13))
+                        .foregroundColor(Color.white.opacity(0.8))
+                    Spacer()
+                    Stepper("\(silenceTimeoutMinutes) min", value: $silenceTimeoutMinutes, in: 1...60)
+                        .font(.system(size: 13))
+                }
+                Text("Recording stops automatically if no audio is detected for this long.")
+                    .font(.system(size: 11))
+                    .foregroundColor(Color.white.opacity(0.3))
+            }
+
             Spacer()
         }
         .padding(28)
-        .frame(width: 360, height: 240)
+        .frame(width: 360, height: 320)
         .background(Color(red: 0.08, green: 0.08, blue: 0.1))
         .preferredColorScheme(.dark)
         .onAppear { recorder.refreshMicList() }

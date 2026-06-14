@@ -1,12 +1,10 @@
 import Foundation
 import SwiftUI
 
-// Options the user can toggle before running AI
 struct AIOptions {
     var includeActionItems: Bool = true
     var includeOwners: Bool = true
     var includeDeadlines: Bool = true
-    var includeSentiment: Bool = false  // optional: meeting tone
 }
 
 @MainActor
@@ -43,56 +41,88 @@ class OllamaService: ObservableObject {
         let model = await resolveModel()
 
         switch action {
-        case .recap:
-            return await generateRecap(transcript: transcript, options: options, model: model)
-        case .email:
-            return await generateEmail(transcript: transcript, options: options, model: model)
+        case .recap:     return await generateRecap(transcript: transcript, options: options, model: model)
+        case .decisions: return await generateDecisions(transcript: transcript, model: model)
+        case .nextSteps: return await generateNextSteps(transcript: transcript, options: options, model: model)
+        case .email:     return await generateEmail(transcript: transcript, options: options, model: model)
         }
     }
 
     // MARK: – Recap
 
     private func generateRecap(transcript: String, options: AIOptions, model: String) async -> AIResult {
-        var sections: [String] = []
+        var prompt = """
+        You are a meeting analyst. Read the transcript below and write a clear meeting recap.
 
-        sections.append("""
-        You are a meeting analyst. Given the transcript below, write a clear meeting recap.
+        Speaker key: [Local] = person in the room with the microphone, [Remote] = caller on Zoom or phone.
 
-        Speaker key: [Local] = person in the room, [Remote] = caller on Zoom/video.
-
-        Include:
-        - A 2-3 sentence summary of what was discussed
+        Write in plain prose. Include:
+        - A 2 to 3 sentence summary of what was discussed
+        - Key topics covered
         - Key decisions made
-        - Topics covered (brief bullets)
-        """)
+        """
 
         if options.includeActionItems {
-            var actionSection = "- Action items"
-            if options.includeOwners { actionSection += " (with who is responsible)" }
-            if options.includeDeadlines { actionSection += " (and any deadlines mentioned)" }
-            sections.append(actionSection)
+            prompt += "\n\nThen list every action item using exactly this format (one per line):\n"
+            prompt += "ACTION: [task]"
+            if options.includeOwners { prompt += " — Owner: [Local/Remote/name]" }
+            if options.includeDeadlines { prompt += " — Due: [deadline or Not specified]" }
         }
 
-        if options.includeSentiment {
-            sections.append("- Overall meeting tone/sentiment")
-        }
+        prompt += formatRule + "\n\nTranscript:\n\(transcript)"
 
-        sections.append("""
+        let raw = await generate(prompt: prompt, model: model)
+        let clean = stripMarkdown(raw)
+        return AIResult(main: clean, actionItems: options.includeActionItems ? parseActionItems(from: clean) : [])
+    }
 
-        Format action items as a simple list like:
-        ACTION: [task] — Owner: [Local/Remote/Unknown] — Due: [deadline or 'Not specified']
+    // MARK: – Key Decisions
+
+    private func generateDecisions(transcript: String, model: String) async -> AIResult {
+        let prompt = """
+        You are a meeting analyst. Read the transcript below and extract only the key decisions that were made or agreed upon.
+
+        Speaker key: [Local] = person in the room with the microphone, [Remote] = caller on Zoom or phone.
+
+        List each decision on its own line. Start each line with "DECISION:" followed by a clear, one-sentence statement of what was decided and who will act on it if relevant. Do not include discussion, only firm decisions.
+        \(formatRule)
 
         Transcript:
         \(transcript)
-        """)
+        """
 
-        let prompt = sections.joined(separator: "\n")
         let raw = await generate(prompt: prompt, model: model)
+        return AIResult(main: stripMarkdown(raw), actionItems: [])
+    }
 
-        return AIResult(
-            main: raw,
-            actionItems: parseActionItems(from: raw)
-        )
+    // MARK: – Next Steps
+
+    private func generateNextSteps(transcript: String, options: AIOptions, model: String) async -> AIResult {
+        var prompt = """
+        You are a meeting analyst. Read the transcript below and produce a focused next-steps list.
+
+        Speaker key: [Local] = person in the room with the microphone, [Remote] = caller on Zoom or phone.
+
+        List every follow-up task, commitment, or thing that needs to happen after this meeting.
+        """
+
+        if options.includeOwners {
+            prompt += " For each item, note who is responsible (Local, Remote, or a name if mentioned)."
+        }
+        if options.includeDeadlines {
+            prompt += " Include any deadline or timeframe mentioned."
+        }
+
+        prompt += "\n\nUse this format for each item (one per line):\n"
+        prompt += "ACTION: [task]"
+        if options.includeOwners { prompt += " — Owner: [name or Local/Remote]" }
+        if options.includeDeadlines { prompt += " — Due: [deadline or Not specified]" }
+
+        prompt += formatRule + "\n\nTranscript:\n\(transcript)"
+
+        let raw = await generate(prompt: prompt, model: model)
+        let clean = stripMarkdown(raw)
+        return AIResult(main: clean, actionItems: parseActionItems(from: clean))
     }
 
     // MARK: – Email
@@ -101,37 +131,60 @@ class OllamaService: ObservableObject {
         var prompt = """
         You are a professional email writer. Based on the meeting transcript below, write a follow-up email.
 
-        Speaker key: [Local] = person in the room, [Remote] = caller on Zoom/video.
+        Speaker key: [Local] = person in the room with the microphone, [Remote] = caller on Zoom or phone.
 
         The email should include:
         - Subject line
-        - Brief thank you / intro
+        - Brief opening
         - Summary of what was discussed
         - Key decisions
         """
 
         if options.includeActionItems {
             prompt += "\n        - Action items"
-            if options.includeOwners { prompt += " with owner names (use Local/Remote if names unknown)" }
+            if options.includeOwners { prompt += " with who is responsible" }
             if options.includeDeadlines { prompt += " and any deadlines" }
         }
 
-        prompt += """
+        prompt += "\n        - Professional closing\n\nUse [Your Name] as a placeholder for the sender."
 
-        - Professional closing
+        if options.includeActionItems {
+            prompt += "\n\nAfter the email body, list action items using this format (one per line):\n"
+            prompt += "ACTION: [task]"
+            if options.includeOwners { prompt += " — Owner: [name or Local/Remote]" }
+            if options.includeDeadlines { prompt += " — Due: [deadline or Not specified]" }
+        }
 
-        Keep it concise. Use [Your Name] as a placeholder for the sender.
-
-        Transcript:
-        \(transcript)
-        """
+        prompt += formatRule + "\n\nTranscript:\n\(transcript)"
 
         let raw = await generate(prompt: prompt, model: model)
+        let clean = stripMarkdown(raw)
+        return AIResult(main: clean, actionItems: options.includeActionItems ? parseActionItems(from: clean) : [])
+    }
 
-        return AIResult(
-            main: raw,
-            actionItems: options.includeActionItems ? parseActionItems(from: raw) : []
-        )
+    // MARK: – Prompt helpers
+
+    private let formatRule = """
+
+
+    IMPORTANT: Plain text only. No markdown. No asterisks, no pound signs, no underscores for emphasis. \
+    Use numbered lists or plain line breaks instead of bullet symbols.
+    """
+
+    private func stripMarkdown(_ text: String) -> String {
+        let lines = text.components(separatedBy: "\n").map { line -> String in
+            var l = line
+            if let range = l.range(of: #"^#{1,6}\s+"#, options: .regularExpression) {
+                l = String(l[range.upperBound...])
+            }
+            return l
+        }
+        var result = lines.joined(separator: "\n")
+        result = result.replacingOccurrences(of: "**", with: "")
+        result = result.replacingOccurrences(of: "__", with: "")
+        result = result.replacingOccurrences(of: "*", with: "")
+        result = result.replacingOccurrences(of: "_", with: "")
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: – Ollama generate
@@ -143,7 +196,7 @@ class OllamaService: ObservableObject {
             "model": model,
             "prompt": prompt,
             "stream": false,
-            "options": ["temperature": 0.6, "num_predict": 768]
+            "options": ["temperature": 0.4, "num_predict": 900]
         ]
 
         guard let data = try? JSONSerialization.data(withJSONObject: body) else { return "Error: encoding" }
@@ -166,12 +219,11 @@ class OllamaService: ObservableObject {
         }
     }
 
-    // MARK: – Parse action items from response text
+    // MARK: – Parse action items
 
     private func parseActionItems(from text: String) -> [ActionItem] {
         var items: [ActionItem] = []
-        let lines = text.components(separatedBy: "\n")
-        for line in lines {
+        for line in text.components(separatedBy: "\n") {
             guard line.uppercased().hasPrefix("ACTION:") else { continue }
             let content = String(line.dropFirst(7)).trimmingCharacters(in: .whitespaces)
 
@@ -184,7 +236,7 @@ class OllamaService: ObservableObject {
                 let after = String(content[ownerRange.upperBound...]).trimmingCharacters(in: .whitespaces)
                 if let dueRange = after.range(of: "— Due:", options: .caseInsensitive) {
                     owner = String(after[after.startIndex..<dueRange.lowerBound]).trimmingCharacters(in: .whitespaces)
-                    due = String(after[dueRange.upperBound...]).trimmingCharacters(in: .whitespaces)
+                    due   = String(after[dueRange.upperBound...]).trimmingCharacters(in: .whitespaces)
                 } else {
                     owner = after
                 }
@@ -216,12 +268,14 @@ class OllamaService: ObservableObject {
 // MARK: – Models
 
 enum AIAction: String, CaseIterable {
-    case recap = "Recap"
-    case email = "Email Draft"
+    case recap     = "Recap"
+    case decisions = "Decisions"
+    case nextSteps = "Next Steps"
+    case email     = "Email"
 }
 
 struct AIResult {
-    let main: String          // full text output
+    let main: String
     let actionItems: [ActionItem]
 }
 
