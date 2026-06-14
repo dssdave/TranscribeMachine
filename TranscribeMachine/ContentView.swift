@@ -318,19 +318,6 @@ struct ContentView: View {
                 }
             }
 
-            // Options — hidden for Decisions which has no follow-ups
-            if selectedAction != .decisions {
-                HStack(spacing: 8) {
-                    Toggle("Action Items", isOn: $options.includeActionItems)
-                    if options.includeActionItems {
-                        Toggle("Owners",    isOn: $options.includeOwners)
-                        Toggle("Deadlines", isOn: $options.includeDeadlines)
-                    }
-                    Spacer()
-                }
-                .toggleStyle(ChipToggleStyle())
-            }
-
             if !ollama.isAvailable { OllamaNotice() }
 
             if let result = aiResult {
@@ -794,23 +781,6 @@ struct StopButtonStyle: ButtonStyle {
             .foregroundColor(.white)
             .background(Color.red.opacity(configuration.isPressed ? 0.5 : 0.7))
             .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
-}
-
-struct ChipToggleStyle: ToggleStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        Button { configuration.isOn.toggle() } label: {
-            HStack(spacing: 5) {
-                Image(systemName: configuration.isOn ? "checkmark.circle.fill" : "circle").font(.system(size: 11))
-                configuration.label.font(.system(size: 11, weight: .medium))
-            }
-            .foregroundColor(configuration.isOn ? .white : Color.white.opacity(0.4))
-            .padding(.horizontal, 10).padding(.vertical, 5)
-            .background(configuration.isOn ? Color.white.opacity(0.12) : Color.white.opacity(0.05))
-            .clipShape(Capsule())
-            .overlay(Capsule().stroke(Color.white.opacity(configuration.isOn ? 0.2 : 0.07), lineWidth: 1))
-        }
-        .buttonStyle(.plain)
     }
 }
 
