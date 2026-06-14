@@ -121,14 +121,15 @@ struct ContentView: View {
     }
 
     @ViewBuilder var statusIndicator: some View {
-        if transcriber.isDownloading || whisperX.setupState == .installing || whisperX.isRunning {
+        if transcriber.isDownloading || whisperX.setupState == .installing || whisperX.isRunning
+            || ollama.state == .starting || ollama.state == .downloading {
             HStack(spacing: 7) {
                 ProgressView().scaleEffect(0.6)
                 Text(currentStatusLabel)
                     .font(.system(size: 11))
                     .foregroundColor(Color.white.opacity(0.4))
             }
-        } else if isReady {
+        } else if isReady && ollama.state == .ready {
             HStack(spacing: 5) {
                 Circle()
                     .fill(Color(red: 0.2, green: 0.9, blue: 0.5))
@@ -144,6 +145,8 @@ struct ContentView: View {
         if transcriber.isDownloading { return "Downloading… \(Int(transcriber.downloadProgress * 100))%" }
         if whisperX.setupState == .installing { return "Setting up…" }
         if whisperX.isRunning { return whisperX.progress.isEmpty ? "Analyzing…" : whisperX.progress }
+        if ollama.state == .downloading { return ollama.downloadProgress }
+        if ollama.state == .starting { return "Starting AI…" }
         return ""
     }
 
@@ -315,7 +318,7 @@ struct ContentView: View {
                     .buttonStyle(ActionButtonStyle(
                         isSelected: selectedAction == action && aiResult != nil && !isProcessingAI
                     ))
-                    .disabled(isProcessingAI)
+                    .disabled(isProcessingAI || ollama.state != .ready)
                 }
             }
 
@@ -330,7 +333,7 @@ struct ContentView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.07), lineWidth: 1))
 
-            if !ollama.isAvailable { OllamaNotice() }
+            if ollama.state == .unavailable { AIUnavailableNotice() }
 
             if let result = aiResult {
                 VStack(alignment: .leading, spacing: 12) {
@@ -499,21 +502,6 @@ struct ContentView: View {
                     .labelsHidden()
                     Text("Recording stops if no audio is detected for this long.")
                         .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
-                }
-
-                if !ollama.availableModels.isEmpty {
-                    Divider().background(Color.white.opacity(0.1))
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("AI Model")
-                            .font(.system(size: 12, weight: .medium)).foregroundColor(Color.white.opacity(0.5))
-                        Picker("", selection: $ollama.selectedModel) {
-                            ForEach(ollama.availableModels, id: \.self) { Text($0).tag($0) }
-                        }
-                        .labelsHidden()
-                        .onChange(of: ollama.selectedModel) { model in
-                            UserDefaults.standard.set(model, forKey: "ollamaModel")
-                        }
-                    }
                 }
 
                 Spacer()
@@ -744,17 +732,15 @@ struct RecordingPulse: View {
     }
 }
 
-struct OllamaNotice: View {
+struct AIUnavailableNotice: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).font(.system(size: 12))
             VStack(alignment: .leading, spacing: 2) {
-                Text("AI features need Ollama").font(.system(size: 12, weight: .semibold)).foregroundColor(Color.white.opacity(0.8))
-                Text("ollama.com  →  ollama pull llama3.2").font(.system(size: 11, design: .monospaced)).foregroundColor(Color.white.opacity(0.4))
+                Text("AI engine not found").font(.system(size: 12, weight: .semibold)).foregroundColor(Color.white.opacity(0.8))
+                Text("Please reinstall the app to set up AI features.").font(.system(size: 11)).foregroundColor(Color.white.opacity(0.4))
             }
             Spacer()
-            Button("Get Ollama") { NSWorkspace.shared.open(URL(string: "https://ollama.com")!) }
-                .buttonStyle(PillButtonStyle(color: .orange))
         }
         .padding(12)
         .background(Color.orange.opacity(0.07))

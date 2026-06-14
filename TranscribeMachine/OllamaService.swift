@@ -1,6 +1,9 @@
 import Foundation
 import SwiftUI
 
+// The one model we've chosen. Users never see this name.
+private let kModel = "llama3.2:3b"
+
 struct AIOptions {
     var includeActionItems: Bool = true
     var includeOwners: Bool = true
@@ -9,60 +12,73 @@ struct AIOptions {
 
 @MainActor
 class OllamaService: ObservableObject {
-    @Published var isAvailable = false
-    @Published var availableModels: [String] = []
-    @Published var selectedModel: String = ""
+
+    enum AIState: Equatable {
+        case starting       // finding / launching the server
+        case downloading    // pulling the model weights for the first time
+        case ready
+        case unavailable    // ollama not installed on this machine
+    }
+
+    @Published var state: AIState = .starting
+    @Published var downloadProgress: String = ""   // e.g. "Downloading AI model… 34%"
 
     private let baseURL = "http://localhost:11434"
 
     init() {
-        Task { await checkAvailability() }
+        Task { await setup() }
     }
 
-    func checkAvailability() async {
-        guard let url = URL(string: "\(baseURL)/api/tags") else { return }
-        do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            isAvailable = (response as? HTTPURLResponse)?.statusCode == 200
-            if isAvailable,
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let models = json["models"] as? [[String: Any]] {
-                availableModels = models.compactMap { $0["name"] as? String }
-                let saved = UserDefaults.standard.string(forKey: "ollamaModel") ?? ""
-                if !saved.isEmpty && availableModels.contains(saved) {
-                    selectedModel = saved
-                } else if selectedModel.isEmpty || !availableModels.contains(selectedModel) {
-                    selectedModel = autoSelectModel()
-                }
+    // MARK: – Setup pipeline
+
+    func setup() async {
+        state = .starting
+
+        // 1. If server already up, just ensure the model is present
+        if await serverIsRunning() {
+            await ensureModel()
+            return
+        }
+
+        // 2. Try to start the server
+        if let exec = ollamaExec {
+            launchServer(exec)
+            if await waitForServer() {
+                await ensureModel()
+                return
             }
-        } catch {
-            isAvailable = false
+        }
+
+        state = .unavailable
+    }
+
+    private func ensureModel() async {
+        if await modelPresent() {
+            state = .ready
+        } else {
+            await pullModel()
         }
     }
 
     // MARK: – Public entry point
 
-    func run(action: AIAction, transcript: String, options: AIOptions, customInstructions: String = "", audioSource: String = "") async -> AIResult {
-        await checkAvailability()
-        guard isAvailable else {
-            return AIResult(
-                main: "Ollama is not running.\n\nInstall at ollama.com, then:\n  ollama pull llama3.2",
-                actionItems: []
-            )
+    func run(action: AIAction, transcript: String, options: AIOptions,
+             customInstructions: String = "", audioSource: String = "") async -> AIResult {
+        guard state == .ready else {
+            return AIResult(main: "AI is not ready yet. Please wait a moment.", actionItems: [])
         }
-        let model = await resolveModel()
         let ctx = contextBlock(audioSource)
         switch action {
-        case .recap:     return await generateRecap(transcript: transcript, options: options, custom: customInstructions, context: ctx, model: model)
-        case .decisions: return await generateDecisions(transcript: transcript, custom: customInstructions, context: ctx, model: model)
-        case .nextSteps: return await generateNextSteps(transcript: transcript, options: options, custom: customInstructions, context: ctx, model: model)
-        case .email:     return await generateEmail(transcript: transcript, options: options, custom: customInstructions, context: ctx, model: model)
+        case .recap:     return await generateRecap(transcript: transcript, options: options, custom: customInstructions, context: ctx)
+        case .decisions: return await generateDecisions(transcript: transcript, custom: customInstructions, context: ctx)
+        case .nextSteps: return await generateNextSteps(transcript: transcript, options: options, custom: customInstructions, context: ctx)
+        case .email:     return await generateEmail(transcript: transcript, options: options, custom: customInstructions, context: ctx)
         }
     }
 
     // MARK: – Recap
 
-    private func generateRecap(transcript: String, options: AIOptions, custom: String, context: String, model: String) async -> AIResult {
+    private func generateRecap(transcript: String, options: AIOptions, custom: String, context: String) async -> AIResult {
         var prompt = """
         \(context)Summarize this transcript in 3 to 5 sentences. Only include what was actually said — do not add, infer, or guess.
         \(customBlock(custom))
@@ -76,14 +92,14 @@ class OllamaService: ObservableObject {
 
         prompt += formatRule
 
-        let raw = await generate(prompt: prompt, model: model)
+        let raw = await generate(prompt: prompt)
         let clean = stripMarkdown(raw)
         return AIResult(main: clean, actionItems: options.includeActionItems ? parseActionItems(from: clean) : [])
     }
 
-    // MARK: – Key Decisions
+    // MARK: – Decisions
 
-    private func generateDecisions(transcript: String, custom: String, context: String, model: String) async -> AIResult {
+    private func generateDecisions(transcript: String, custom: String, context: String) async -> AIResult {
         let prompt = """
         \(context)Read the transcript and list only decisions that were explicitly agreed on.
 
@@ -97,13 +113,13 @@ class OllamaService: ObservableObject {
         \(transcript)
         """
 
-        let raw = await generate(prompt: prompt, model: model)
+        let raw = await generate(prompt: prompt)
         return AIResult(main: stripMarkdown(raw), actionItems: [])
     }
 
     // MARK: – Next Steps
 
-    private func generateNextSteps(transcript: String, options: AIOptions, custom: String, context: String, model: String) async -> AIResult {
+    private func generateNextSteps(transcript: String, options: AIOptions, custom: String, context: String) async -> AIResult {
         var prompt = """
         \(context)Read the transcript and list only tasks someone explicitly said they will do.
 
@@ -119,14 +135,14 @@ class OllamaService: ObservableObject {
         prompt += "\n\n" + actionItemInstruction(owners: options.includeOwners, deadlines: options.includeDeadlines)
         prompt += formatRule
 
-        let raw = await generate(prompt: prompt, model: model)
+        let raw = await generate(prompt: prompt)
         let clean = stripMarkdown(raw)
         return AIResult(main: clean, actionItems: parseActionItems(from: clean))
     }
 
     // MARK: – Email
 
-    private func generateEmail(transcript: String, options: AIOptions, custom: String, context: String, model: String) async -> AIResult {
+    private func generateEmail(transcript: String, options: AIOptions, custom: String, context: String) async -> AIResult {
         var prompt = """
         \(context)Write a professional follow-up email based on this transcript.
         The sender is "You" in the transcript. Use [Your Name] for the sign-off.
@@ -146,7 +162,7 @@ class OllamaService: ObservableObject {
 
         prompt += formatRule
 
-        let raw = await generate(prompt: prompt, model: model)
+        let raw = await generate(prompt: prompt)
         let clean = stripMarkdown(raw)
         return AIResult(main: clean, actionItems: options.includeActionItems ? parseActionItems(from: clean) : [])
     }
@@ -158,10 +174,7 @@ class OllamaService: ObservableObject {
         s += "ACTION: the task"
         if owners  { s += " — Owner: who said it" }
         if deadlines { s += " — Due: deadline if stated, else omit" }
-        s += """
-
-        Do NOT output any ACTION lines if no one explicitly committed. "We should" is not a commitment.
-        """
+        s += "\nDo NOT output any ACTION lines if no one explicitly committed. \"We should\" is not a commitment."
         return s
     }
 
@@ -169,75 +182,138 @@ class OllamaService: ObservableObject {
         guard !source.isEmpty else { return "" }
         switch source {
         case "Zoom call", "Microsoft Teams call", "FaceTime call", "Webex call":
-            return "Context: This is a transcript of a \(source). It may have two or more participants.\n"
+            return "Context: This is a \(source) — may have two or more live participants.\n"
         case "browser audio":
-            return "Context: This audio is from a browser (YouTube, podcast, or online video). It is a one-way presentation — one person speaking, not a live meeting. The speaker may be labeled \"Caller\" in the transcript but they are a video/podcast presenter, not a live caller. Do not generate action items or decisions unless the presenter explicitly stated them as commitments.\n"
+            return "Context: Audio from a browser (YouTube, podcast, or online video). One-way presentation — single presenter, not a live meeting. The speaker may be labeled \"Caller\" but is a video/podcast presenter. Do not generate action items or decisions unless explicitly stated.\n"
         case "Discord":
-            return "Context: This audio was captured from Discord.\n"
+            return "Context: Audio from Discord.\n"
         case "Loom recording":
-            return "Context: This is a Loom recording — a single presenter speaking to camera, not a live meeting.\n"
+            return "Context: Loom recording — single presenter to camera, not a live meeting.\n"
         default:
-            return "Context: System audio source: \(source).\n"
+            return ""
         }
     }
 
     private func customBlock(_ instructions: String) -> String {
-        guard !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "" }
-        return "\n\nAdditional instructions from the user: \(instructions.trimmingCharacters(in: .whitespacesAndNewlines))"
+        let s = instructions.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty else { return "" }
+        return "\nAdditional instructions: \(s)\n"
     }
 
-    private let formatRule = """
-
-
-    IMPORTANT: Plain text only. No markdown. No asterisks, no pound signs, no underscores for emphasis. \
-    Use plain line breaks instead of bullet symbols.
-    """
+    private let formatRule = "\n\nIMPORTANT: Plain text only. No markdown, no asterisks, no pound signs, no underscores. Use plain line breaks."
 
     private func stripMarkdown(_ text: String) -> String {
         let lines = text.components(separatedBy: "\n").map { line -> String in
             var l = line
-            if let range = l.range(of: #"^#{1,6}\s+"#, options: .regularExpression) {
-                l = String(l[range.upperBound...])
-            }
+            if let r = l.range(of: #"^#{1,6}\s+"#, options: .regularExpression) { l = String(l[r.upperBound...]) }
             return l
         }
         var result = lines.joined(separator: "\n")
-        result = result.replacingOccurrences(of: "**", with: "")
-        result = result.replacingOccurrences(of: "__", with: "")
-        result = result.replacingOccurrences(of: "*",  with: "")
-        result = result.replacingOccurrences(of: "_",  with: "")
+        for token in ["**", "__", "*", "_"] { result = result.replacingOccurrences(of: token, with: "") }
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    // MARK: – Ollama generate
+    // MARK: – Ollama HTTP
 
-    private func generate(prompt: String, model: String) async -> String {
+    private func generate(prompt: String) async -> String {
         guard let url = URL(string: "\(baseURL)/api/generate") else { return "Error: bad URL" }
-
         let body: [String: Any] = [
-            "model": model,
-            "prompt": prompt,
-            "stream": false,
+            "model": kModel, "prompt": prompt, "stream": false,
             "options": ["temperature": 0.1, "num_predict": 600]
         ]
-
         guard let data = try? JSONSerialization.data(withJSONObject: body) else { return "Error: encoding" }
-
         var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.httpBody = data
+        req.httpMethod = "POST"; req.httpBody = data
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.timeoutInterval = 180
-
         do {
-            let (respData, _) = try await URLSession.shared.data(for: req)
-            if let json = try? JSONSerialization.jsonObject(with: respData) as? [String: Any],
+            let (resp, _) = try await URLSession.shared.data(for: req)
+            if let json = try? JSONSerialization.jsonObject(with: resp) as? [String: Any],
                let text = json["response"] as? String {
                 return text.trimmingCharacters(in: .whitespacesAndNewlines)
             }
             return "Error: could not parse response"
+        } catch { return "Error: \(error.localizedDescription)" }
+    }
+
+    // MARK: – Server management
+
+    private var ollamaExec: String? {
+        let home = NSHomeDirectory()
+        let candidates = [
+            "/usr/local/bin/ollama",
+            "/opt/homebrew/bin/ollama",
+            "\(home)/.ollama/bin/ollama",
+            "\(home)/Library/Application Support/TranscribeMachine/ollama"
+        ]
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    private func serverIsRunning() async -> Bool {
+        guard let url = URL(string: "\(baseURL)/api/tags") else { return false }
+        return (try? await URLSession.shared.data(from: url)) != nil
+    }
+
+    private func waitForServer(attempts: Int = 20, delay: UInt64 = 500_000_000) async -> Bool {
+        for _ in 0..<attempts {
+            if await serverIsRunning() { return true }
+            try? await Task.sleep(nanoseconds: delay)
+        }
+        return false
+    }
+
+    private func launchServer(_ exec: String) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: exec)
+        p.arguments = ["serve"]
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + (env["PATH"] ?? "")
+        p.environment = env
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError  = FileHandle.nullDevice
+        try? p.run()
+    }
+
+    private func modelPresent() async -> Bool {
+        guard let url = URL(string: "\(baseURL)/api/tags") else { return false }
+        guard let (data, _) = try? await URLSession.shared.data(from: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let models = json["models"] as? [[String: Any]] else { return false }
+        return models.contains { ($0["name"] as? String)?.hasPrefix("llama3.2:3b") == true }
+    }
+
+    private func pullModel() async {
+        state = .downloading
+        downloadProgress = "Downloading AI model for the first time… this takes a few minutes"
+
+        guard let url = URL(string: "\(baseURL)/api/pull") else { state = .unavailable; return }
+        let body = ["name": kModel, "stream": true] as [String: Any]
+        guard let data = try? JSONSerialization.data(withJSONObject: body) else { state = .unavailable; return }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"; req.httpBody = data
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 600
+
+        do {
+            let (stream, _) = try await URLSession.shared.bytes(for: req)
+            for try await line in stream.lines {
+                guard let lineData = line.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any]
+                else { continue }
+                if let total = json["total"] as? Double,
+                   let completed = json["completed"] as? Double,
+                   total > 0 {
+                    let pct = Int((completed / total) * 100)
+                    downloadProgress = "Downloading AI model… \(pct)%"
+                }
+                if (json["status"] as? String) == "success" { break }
+            }
+            state = .ready
+            downloadProgress = ""
         } catch {
-            return "Error: \(error.localizedDescription)"
+            state = .unavailable
+            downloadProgress = ""
         }
     }
 
@@ -259,24 +335,19 @@ class OllamaService: ObservableObject {
                     let lower = next.lowercased()
                     if lower.hasPrefix("- owner:") || lower.hasPrefix("owner:") ||
                        lower.hasPrefix("- due:")   || lower.hasPrefix("due:") {
-                        let stripped = next.trimmingCharacters(in: CharacterSet(charactersIn: "- "))
-                        line += " — " + stripped
+                        line += " — " + next.trimmingCharacters(in: CharacterSet(charactersIn: "- "))
                         j += 1
                     } else { break }
                 }
                 i = j
                 merged.append(line)
-            } else {
-                i += 1
-            }
+            } else { i += 1 }
         }
 
         var items: [ActionItem] = []
         for line in merged {
             let content = String(line.dropFirst(7)).trimmingCharacters(in: .whitespaces)
-            var task = content
-            var owner = "Unknown"
-            var due = "Not specified"
+            var task = content, owner = "Unknown", due = "Not specified"
 
             for ownerKey in ["— Owner:", "- Owner:", "| Owner:", "Owner:"] {
                 if let range = content.range(of: ownerKey, options: .caseInsensitive) {
@@ -286,8 +357,7 @@ class OllamaService: ObservableObject {
                         if let dueRange = after.range(of: dueKey, options: .caseInsensitive) {
                             owner = String(after[after.startIndex..<dueRange.lowerBound]).trimmingCharacters(in: .whitespaces)
                             let dueStr = String(after[dueRange.upperBound...]).trimmingCharacters(in: .whitespaces)
-                            due = ["none", "n/a", "not specified", "tbd", ""].contains(dueStr.lowercased())
-                                ? "Not specified" : dueStr
+                            due = ["none", "n/a", "not specified", "tbd", ""].contains(dueStr.lowercased()) ? "Not specified" : dueStr
                             break
                         }
                     }
@@ -296,36 +366,17 @@ class OllamaService: ObservableObject {
                 }
             }
 
-            task  = task.replacingOccurrences(of: "[Local]",  with: "you")
-                        .replacingOccurrences(of: "[Remote]", with: "caller")
-                        .replacingOccurrences(of: "[You]",    with: "you")
-                        .replacingOccurrences(of: "[Caller]", with: "caller")
-                        .trimmingCharacters(in: CharacterSet(charactersIn: "[] "))
-            owner = owner.replacingOccurrences(of: "[Local]",  with: "you")
-                         .replacingOccurrences(of: "[Remote]", with: "caller")
-                         .replacingOccurrences(of: "[You]",    with: "you")
-                         .replacingOccurrences(of: "[Caller]", with: "caller")
-                         .trimmingCharacters(in: CharacterSet(charactersIn: "[] "))
+            for (bad, good) in [("[Local]","you"),("[Remote]","caller"),("[You]","you"),("[Caller]","caller")] {
+                task  = task.replacingOccurrences(of: bad, with: good)
+                owner = owner.replacingOccurrences(of: bad, with: good)
+            }
+            task  = task.trimmingCharacters(in: CharacterSet(charactersIn: "[] "))
+            owner = owner.trimmingCharacters(in: CharacterSet(charactersIn: "[] "))
 
             guard !task.isEmpty, task.count < 400 else { continue }
             items.append(ActionItem(task: task, owner: owner, due: due))
         }
         return items
-    }
-
-    // MARK: – Model resolution
-
-    private func resolveModel() async -> String {
-        if !selectedModel.isEmpty { return selectedModel }
-        await checkAvailability()
-        return selectedModel.isEmpty ? "llama3.2" : selectedModel
-    }
-
-    private func autoSelectModel() -> String {
-        for preferred in ["llama3.2", "llama3", "mistral", "llama2"] {
-            if let match = availableModels.first(where: { $0.hasPrefix(preferred) }) { return match }
-        }
-        return availableModels.first ?? "llama3.2"
     }
 }
 
