@@ -10,6 +10,8 @@ struct AIOptions {
 @MainActor
 class OllamaService: ObservableObject {
     @Published var isAvailable = false
+    @Published var availableModels: [String] = []
+    @Published var selectedModel: String = ""
 
     private let baseURL = "http://localhost:11434"
 
@@ -20,8 +22,19 @@ class OllamaService: ObservableObject {
     func checkAvailability() async {
         guard let url = URL(string: "\(baseURL)/api/tags") else { return }
         do {
-            let (_, response) = try await URLSession.shared.data(from: url)
+            let (data, response) = try await URLSession.shared.data(from: url)
             isAvailable = (response as? HTTPURLResponse)?.statusCode == 200
+            if isAvailable,
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let models = json["models"] as? [[String: Any]] {
+                availableModels = models.compactMap { $0["name"] as? String }
+                let saved = UserDefaults.standard.string(forKey: "ollamaModel") ?? ""
+                if !saved.isEmpty && availableModels.contains(saved) {
+                    selectedModel = saved
+                } else if selectedModel.isEmpty || !availableModels.contains(selectedModel) {
+                    selectedModel = autoSelectModel()
+                }
+            }
         } catch {
             isAvailable = false
         }
@@ -250,18 +263,16 @@ class OllamaService: ObservableObject {
     // MARK: – Model resolution
 
     private func resolveModel() async -> String {
-        guard
-            let url = URL(string: "\(baseURL)/api/tags"),
-            let (data, _) = try? await URLSession.shared.data(from: url),
-            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let models = json["models"] as? [[String: Any]]
-        else { return "llama3.2" }
+        if !selectedModel.isEmpty { return selectedModel }
+        await checkAvailability()
+        return selectedModel.isEmpty ? "llama3.2" : selectedModel
+    }
 
-        let names = models.compactMap { $0["name"] as? String }
+    private func autoSelectModel() -> String {
         for preferred in ["llama3.2", "llama3", "mistral", "llama2"] {
-            if let match = names.first(where: { $0.hasPrefix(preferred) }) { return match }
+            if let match = availableModels.first(where: { $0.hasPrefix(preferred) }) { return match }
         }
-        return names.first ?? "llama3.2"
+        return availableModels.first ?? "llama3.2"
     }
 }
 

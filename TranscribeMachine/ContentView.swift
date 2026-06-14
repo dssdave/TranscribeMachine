@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // Speaker color palette — up to 8 distinct speakers
 private let speakerPalette: [Color] = [
@@ -35,8 +36,11 @@ struct ContentView: View {
     @State private var renamingKey: String?
     @State private var renameText = ""
     @State private var recordingStartDate: Date?
+    @State private var elapsedSeconds = 0
+    @State private var silenceWarningActive = false
+    @State private var silenceTick = 0
 
-    private let silenceTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+    private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     private var showingDiarized: Bool { !diarizedSegments.isEmpty }
     private var hasContent: Bool { !transcriber.segments.isEmpty || !diarizedSegments.isEmpty }
@@ -74,12 +78,17 @@ struct ContentView: View {
             if isRecording {
                 recordingStartDate = Date()
                 transcriber.resetActivity()
+                elapsedSeconds = 0
+                silenceWarningActive = false
             } else {
                 recordingStartDate = nil
+                silenceWarningActive = false
             }
         }
-        .onReceive(silenceTimer) { _ in
-            checkSilenceTimeout()
+        .onReceive(ticker) { _ in
+            if recorder.isRecording { elapsedSeconds += 1 }
+            silenceTick += 1
+            if silenceTick >= 10 { silenceTick = 0; checkSilenceTimeout() }
         }
     }
 
@@ -108,7 +117,7 @@ struct ContentView: View {
             .buttonStyle(.plain)
             .padding(.leading, 12)
             .sheet(isPresented: $showSettings) {
-                SettingsView(recorder: recorder)
+                SettingsView(recorder: recorder, ollama: ollama)
             }
         }
         .padding(.horizontal, 32)
@@ -181,8 +190,30 @@ struct ContentView: View {
                 .buttonStyle(StopButtonStyle())
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
+
+            if silenceWarningActive {
+                HStack(spacing: 8) {
+                    Image(systemName: "clock.badge.exclamationmark.fill")
+                        .foregroundColor(.orange).font(.system(size: 13))
+                    Text("No audio detected — recording will stop soon")
+                        .font(.system(size: 12)).foregroundColor(.orange.opacity(0.9))
+                    Spacer()
+                    Button("Keep Going") {
+                        transcriber.extendActivity()
+                        silenceWarningActive = false
+                    }
+                    .font(.system(size: 11, weight: .semibold)).foregroundColor(.orange)
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(Color.orange.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.orange.opacity(0.25), lineWidth: 1))
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
         .animation(.easeInOut(duration: 0.2), value: recorder.isRecording)
+        .animation(.easeInOut(duration: 0.2), value: silenceWarningActive)
     }
 
     // MARK: – Transcript
@@ -200,13 +231,21 @@ struct ContentView: View {
                     speakerCountBadge
                 }
                 Spacer()
-                if recorder.isRecording { RecordingPulse() }
+                if recorder.isRecording {
+                    RecordingPulse()
+                    Text(formatElapsed(elapsedSeconds))
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundColor(Color.white.opacity(0.35))
+                }
 
                 tinyButton(icon: copiedTranscript ? "checkmark" : "doc.on.doc",
                            label: copiedTranscript ? "Copied" : "Copy") {
                     copy(showingDiarized ? diarizedTranscriptText : transcriber.fullTranscript)
                     copiedTranscript = true
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copiedTranscript = false }
+                }
+                tinyButton(icon: "square.and.arrow.up", label: "Export") {
+                    exportTranscript()
                 }
                 tinyButton(icon: "trash", label: "Clear") {
                     transcriber.clear(); diarizedSegments = []; aiResult = nil
@@ -238,7 +277,7 @@ struct ContentView: View {
                     }
                     .padding(12)
                 }
-                .frame(minHeight: 140, maxHeight: 280)
+                .frame(minHeight: 140, maxHeight: 500)
                 .onChange(of: transcriber.segments.count) { _ in
                     if !showingDiarized, let last = transcriber.segments.last {
                         withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
@@ -303,16 +342,17 @@ struct ContentView: View {
                 .disabled(isProcessingAI)
             }
 
-            // Toggles
-            HStack(spacing: 10) {
-                Toggle("Action Items", isOn: $options.includeActionItems)
-                if options.includeActionItems {
-                    Toggle("Owners",    isOn: $options.includeOwners)
-                    Toggle("Deadlines", isOn: $options.includeDeadlines)
+            if selectedAction != .decisions {
+                HStack(spacing: 10) {
+                    Toggle("Action Items", isOn: $options.includeActionItems)
+                    if options.includeActionItems {
+                        Toggle("Owners",    isOn: $options.includeOwners)
+                        Toggle("Deadlines", isOn: $options.includeDeadlines)
+                    }
+                    Spacer()
                 }
-                Spacer()
+                .toggleStyle(ChipToggleStyle())
             }
-            .toggleStyle(ChipToggleStyle())
 
             if !ollama.isAvailable {
                 OllamaNotice()
@@ -410,11 +450,21 @@ struct ContentView: View {
     // MARK: – Logic
 
     private func checkSilenceTimeout() {
-        guard recorder.isRecording else { return }
+        guard recorder.isRecording, silenceTimeoutMinutes > 0 else {
+            if silenceWarningActive { silenceWarningActive = false }
+            return
+        }
         let reference = transcriber.lastActivityDate ?? recordingStartDate
         guard let ref = reference else { return }
-        if Date().timeIntervalSince(ref) >= Double(silenceTimeoutMinutes) * 60 {
+        let elapsed = Date().timeIntervalSince(ref)
+        let limit = Double(silenceTimeoutMinutes) * 60
+        if elapsed >= limit {
+            silenceWarningActive = false
             stopRecording()
+        } else if elapsed >= limit - 60 {
+            silenceWarningActive = true
+        } else {
+            silenceWarningActive = false
         }
     }
 
@@ -444,6 +494,21 @@ struct ContentView: View {
     private func copy(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private func formatElapsed(_ s: Int) -> String {
+        String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    private func exportTranscript() {
+        let text = showingDiarized ? diarizedTranscriptText : transcriber.fullTranscript
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType.plainText]
+        panel.nameFieldStringValue = "transcript.txt"
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            try? text.write(to: url, atomically: true, encoding: .utf8)
+        }
     }
 
     // MARK: – Speaker helpers
@@ -527,10 +592,10 @@ struct LiveRow: View {
                 Image(systemName: seg.speaker.icon).font(.system(size: 8))
             }
             .foregroundColor(seg.speaker.color)
-            .padding(.horizontal, 8).padding(.vertical, 3)
+            .padding(.horizontal, 6).padding(.vertical, 3)
             .background(seg.speaker.color.opacity(0.12))
             .clipShape(Capsule())
-            .frame(width: 80, alignment: .leading)
+            .frame(width: 26, alignment: .center)
 
             Text(seg.text)
                 .font(.system(size: 13))
@@ -676,6 +741,7 @@ struct ChipToggleStyle: ToggleStyle {
 
 struct SettingsView: View {
     @ObservedObject var recorder: AudioFileRecorder
+    @ObservedObject var ollama: OllamaService
     @Environment(\.dismiss) private var dismiss
     @AppStorage("silenceTimeoutMinutes") private var silenceTimeoutMinutes: Int = 10
 
@@ -720,23 +786,41 @@ struct SettingsView: View {
                 Text("Auto-Stop")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(Color.white.opacity(0.5))
-                HStack {
-                    Text("Stop after silence:")
-                        .font(.system(size: 13))
-                        .foregroundColor(Color.white.opacity(0.8))
-                    Spacer()
-                    Stepper("\(silenceTimeoutMinutes) min", value: $silenceTimeoutMinutes, in: 1...60)
-                        .font(.system(size: 13))
+                Picker("Stop after silence", selection: $silenceTimeoutMinutes) {
+                    Text("Never").tag(0)
+                    Text("5 min").tag(5)
+                    Text("10 min").tag(10)
+                    Text("15 min").tag(15)
+                    Text("30 min").tag(30)
                 }
-                Text("Recording stops automatically if no audio is detected for this long.")
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                Text("Recording stops automatically if no audio is detected.")
                     .font(.system(size: 11))
                     .foregroundColor(Color.white.opacity(0.3))
+            }
+
+            if !ollama.availableModels.isEmpty {
+                Divider().background(Color.white.opacity(0.1))
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("AI Model")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(Color.white.opacity(0.5))
+                    Picker("", selection: $ollama.selectedModel) {
+                        ForEach(ollama.availableModels, id: \.self) { Text($0).tag($0) }
+                    }
+                    .labelsHidden()
+                    .onChange(of: ollama.selectedModel) { model in
+                        UserDefaults.standard.set(model, forKey: "ollamaModel")
+                    }
+                }
             }
 
             Spacer()
         }
         .padding(28)
-        .frame(width: 360, height: 320)
+        .frame(width: 380, height: 420)
         .background(Color(red: 0.08, green: 0.08, blue: 0.1))
         .preferredColorScheme(.dark)
         .onAppear { recorder.refreshMicList() }

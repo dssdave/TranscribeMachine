@@ -58,7 +58,8 @@ class TranscriptionEngine: ObservableObject {
     @Published var modelStatus: String = "Not downloaded"
     @Published var lastActivityDate: Date?
 
-    func resetActivity() { lastActivityDate = nil }
+    func resetActivity()  { lastActivityDate = nil }
+    func extendActivity() { lastActivityDate = Date() }
 
     var fullTranscript: String {
         segments.map { $0.labeledLine }.joined(separator: "\n")
