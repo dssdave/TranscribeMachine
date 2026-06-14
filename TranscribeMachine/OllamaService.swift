@@ -42,7 +42,7 @@ class OllamaService: ObservableObject {
 
     // MARK: – Public entry point
 
-    func run(action: AIAction, transcript: String, options: AIOptions, customInstructions: String = "") async -> AIResult {
+    func run(action: AIAction, transcript: String, options: AIOptions, customInstructions: String = "", audioSource: String = "") async -> AIResult {
         await checkAvailability()
         guard isAvailable else {
             return AIResult(
@@ -51,19 +51,20 @@ class OllamaService: ObservableObject {
             )
         }
         let model = await resolveModel()
+        let ctx = contextBlock(audioSource)
         switch action {
-        case .recap:     return await generateRecap(transcript: transcript, options: options, custom: customInstructions, model: model)
-        case .decisions: return await generateDecisions(transcript: transcript, custom: customInstructions, model: model)
-        case .nextSteps: return await generateNextSteps(transcript: transcript, options: options, custom: customInstructions, model: model)
-        case .email:     return await generateEmail(transcript: transcript, options: options, custom: customInstructions, model: model)
+        case .recap:     return await generateRecap(transcript: transcript, options: options, custom: customInstructions, context: ctx, model: model)
+        case .decisions: return await generateDecisions(transcript: transcript, custom: customInstructions, context: ctx, model: model)
+        case .nextSteps: return await generateNextSteps(transcript: transcript, options: options, custom: customInstructions, context: ctx, model: model)
+        case .email:     return await generateEmail(transcript: transcript, options: options, custom: customInstructions, context: ctx, model: model)
         }
     }
 
     // MARK: – Recap
 
-    private func generateRecap(transcript: String, options: AIOptions, custom: String, model: String) async -> AIResult {
+    private func generateRecap(transcript: String, options: AIOptions, custom: String, context: String, model: String) async -> AIResult {
         var prompt = """
-        Summarize this transcript in 3 to 5 sentences. Only include what was actually said — do not add, infer, or guess.
+        \(context)Summarize this transcript in 3 to 5 sentences. Only include what was actually said — do not add, infer, or guess.
         \(customBlock(custom))
         Transcript:
         \(transcript)
@@ -82,9 +83,9 @@ class OllamaService: ObservableObject {
 
     // MARK: – Key Decisions
 
-    private func generateDecisions(transcript: String, custom: String, model: String) async -> AIResult {
+    private func generateDecisions(transcript: String, custom: String, context: String, model: String) async -> AIResult {
         let prompt = """
-        Read the transcript and list only decisions that were explicitly agreed on.
+        \(context)Read the transcript and list only decisions that were explicitly agreed on.
 
         A decision requires clear agreement language: "we decided", "we agreed", "we will", "let's go with".
         Opinions, suggestions, and statements of fact are NOT decisions.
@@ -102,9 +103,9 @@ class OllamaService: ObservableObject {
 
     // MARK: – Next Steps
 
-    private func generateNextSteps(transcript: String, options: AIOptions, custom: String, model: String) async -> AIResult {
+    private func generateNextSteps(transcript: String, options: AIOptions, custom: String, context: String, model: String) async -> AIResult {
         var prompt = """
-        Read the transcript and list only tasks someone explicitly said they will do.
+        \(context)Read the transcript and list only tasks someone explicitly said they will do.
 
         Strict rules:
         - The transcript must contain words like "I will", "I'll", "I'm going to" followed by a specific task
@@ -125,9 +126,9 @@ class OllamaService: ObservableObject {
 
     // MARK: – Email
 
-    private func generateEmail(transcript: String, options: AIOptions, custom: String, model: String) async -> AIResult {
+    private func generateEmail(transcript: String, options: AIOptions, custom: String, context: String, model: String) async -> AIResult {
         var prompt = """
-        Write a professional follow-up email based on this transcript.
+        \(context)Write a professional follow-up email based on this transcript.
         The sender is "You" in the transcript. Use [Your Name] for the sign-off.
 
         Include: subject line, brief recap of what was discussed, key decisions if any were made.
@@ -162,6 +163,22 @@ class OllamaService: ObservableObject {
         Do NOT output any ACTION lines if no one explicitly committed. "We should" is not a commitment.
         """
         return s
+    }
+
+    private func contextBlock(_ source: String) -> String {
+        guard !source.isEmpty else { return "" }
+        switch source {
+        case "Zoom call", "Microsoft Teams call", "FaceTime call", "Webex call":
+            return "Context: This is a transcript of a \(source). It may have two or more participants.\n"
+        case "browser audio":
+            return "Context: This audio was captured from a browser — it is likely a YouTube video, podcast, or online presentation with a single presenter, not a two-way meeting. Do not expect action items or decisions unless explicitly stated.\n"
+        case "Discord":
+            return "Context: This audio was captured from Discord.\n"
+        case "Loom recording":
+            return "Context: This is a Loom recording — a single presenter speaking to camera, not a live meeting.\n"
+        default:
+            return "Context: System audio source: \(source).\n"
+        }
     }
 
     private func customBlock(_ instructions: String) -> String {

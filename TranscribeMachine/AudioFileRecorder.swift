@@ -9,6 +9,7 @@ class AudioFileRecorder: ObservableObject {
 
     @Published var micActive = false
     @Published var systemActive = false
+    @Published var detectedAudioSource: String = ""
 
     var isRecording: Bool { micActive || systemActive }
 
@@ -126,6 +127,7 @@ class AudioFileRecorder: ObservableObject {
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
             guard let display = content.displays.first else { return }
+            detectedAudioSource = detectSource(from: content.applications)
 
             let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
             let config = SCStreamConfiguration()
@@ -163,6 +165,23 @@ class AudioFileRecorder: ObservableObject {
         scOutput = nil
         remoteWriter = nil
         systemActive = false
+    }
+
+    private func detectSource(from apps: [SCRunningApplication]) -> String {
+        let ids = Set(apps.compactMap { $0.bundleIdentifier })
+        if ids.contains("us.zoom.xos")                  { return "Zoom call" }
+        if ids.contains("com.microsoft.teams")  ||
+           ids.contains("com.microsoft.teams2")         { return "Microsoft Teams call" }
+        if ids.contains("com.apple.FaceTime")           { return "FaceTime call" }
+        if ids.contains("com.cisco.webexmeetings")      { return "Webex call" }
+        if ids.contains("com.hnc.Discord")              { return "Discord" }
+        if ids.contains("com.loom.desktop")             { return "Loom recording" }
+        let browsers: Set<String> = [
+            "com.google.Chrome", "org.mozilla.firefox",
+            "com.apple.Safari", "com.microsoft.edgemac"
+        ]
+        if !ids.isDisjoint(with: browsers)              { return "browser audio" }
+        return "system audio"
     }
 
     // MARK: – Stop all

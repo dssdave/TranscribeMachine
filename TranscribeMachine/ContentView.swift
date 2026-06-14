@@ -565,8 +565,10 @@ struct ContentView: View {
         isProcessingAI = true; aiResult = nil
         let transcript = showingDiarized ? diarizedTranscriptText : transcriber.fullTranscript
         let custom = customInstructions
+        let source = recorder.detectedAudioSource
         Task {
-            let r = await ollama.run(action: selectedAction, transcript: transcript, options: options, customInstructions: custom)
+            let r = await ollama.run(action: selectedAction, transcript: transcript,
+                                     options: options, customInstructions: custom, audioSource: source)
             await MainActor.run { aiResult = r; isProcessingAI = false }
         }
     }
