@@ -31,19 +31,27 @@ struct TranscriptSegment: Identifiable {
     var labeledLine: String { "[\(speaker.rawValue)]: \(text)" }
 }
 
-private let kWhisperModel = "openai_whisper-large-v3-turbo"
+// Best-to-worst preference order — first one WhisperKit has available wins
+private let kWhisperPreference = [
+    "openai_whisper-large-v3-turbo",
+    "openai_whisper-large-v3_turbo",
+    "openai_whisper-large-v3",
+    "openai_whisper-large-v2",
+    "openai_whisper-medium.en",
+    "openai_whisper-small.en",
+]
 
 // Actor isolates WhisperKit to avoid Swift 6 sendability errors
 private actor WhisperActor {
     nonisolated(unsafe) var whisper: WhisperKit?
 
     func load() async throws {
-        let config = WhisperKitConfig(
-            model: kWhisperModel,
-            verbose: false,
-            logLevel: .none
-        )
-        // WhisperKit downloads the model automatically on first use
+        // Ask WhisperKit which models it actually supports in this version
+        let available = (try? await WhisperKit.fetchAvailableModels()) ?? []
+        let model = kWhisperPreference.first { available.contains($0) }
+                 ?? "openai_whisper-small.en"
+
+        let config = WhisperKitConfig(model: model, verbose: false, logLevel: .none)
         whisper = try await WhisperKit(config)
     }
 
