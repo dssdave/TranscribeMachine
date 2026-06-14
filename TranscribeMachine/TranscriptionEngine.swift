@@ -37,21 +37,13 @@ private let kWhisperModel = "openai_whisper-large-v3-turbo"
 private actor WhisperActor {
     nonisolated(unsafe) var whisper: WhisperKit?
 
-    func download(onProgress: @escaping (Double) -> Void) async throws {
-        try await WhisperKit.download(
-            variant: kWhisperModel,
-            progressCallback: { progress in
-                onProgress(progress.fractionCompleted)
-            }
-        )
-    }
-
     func load() async throws {
         let config = WhisperKitConfig(
             model: kWhisperModel,
             verbose: false,
             logLevel: .none
         )
+        // WhisperKit downloads the model automatically on first use
         whisper = try await WhisperKit(config)
     }
 
@@ -92,26 +84,16 @@ class TranscriptionEngine: ObservableObject {
     func prepareModel() {
         guard !isDownloading else { return }
         isDownloading = true
-        downloadProgress = 0
         modelStatus = "Downloading…"
 
         Task {
             do {
-                // Download with live progress, then load into memory
-                try await whisperActor.download { [weak self] fraction in
-                    Task { @MainActor [weak self] in
-                        self?.downloadProgress = fraction
-                    }
-                }
-                modelStatus = "Loading…"
                 try await whisperActor.load()
                 modelReady = true
                 isDownloading = false
-                downloadProgress = 0
                 modelStatus = "Ready"
             } catch {
                 isDownloading = false
-                downloadProgress = 0
                 modelStatus = "Download failed"
                 print("WhisperKit error: \(error)")
             }

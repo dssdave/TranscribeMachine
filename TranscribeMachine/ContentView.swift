@@ -151,10 +151,8 @@ struct ContentView: View {
     }
 
     private var setupStatusLabel: String {
-        if transcriber.modelStatus == "Loading…" { return "Loading transcription model…" }
-        let pct = Int(transcriber.downloadProgress * 100)
-        if pct > 0 { return "Downloading transcription model… \(pct)%" }
-        return "Downloading transcription model (first time only, ~800 MB)…"
+        if transcriber.modelStatus == "Download failed" { return "Transcription model download failed — check your connection" }
+        return "Setting up transcription (first time only, ~800 MB)…"
     }
 
     // MARK: – Record Buttons
