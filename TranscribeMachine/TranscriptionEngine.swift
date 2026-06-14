@@ -36,19 +36,23 @@ private actor WhisperActor {
     nonisolated(unsafe) var whisper: WhisperKit?
 
     func load() async throws {
-        // Try a better model first; fall back to small.en which is always available
-        let candidates = ["openai_whisper-large-v2", "openai_whisper-small.en"]
-        var lastError: Error?
-        for model in candidates {
-            do {
-                let config = WhisperKitConfig(model: model, verbose: false, logLevel: .none)
-                whisper = try await WhisperKit(config)
-                return
-            } catch {
-                lastError = error
-            }
-        }
-        throw lastError ?? NSError(domain: "WhisperKit", code: -1)
+        // Preference order — best to most compatible
+        let preferred = [
+            "openai_whisper-large-v3-turbo",
+            "openai_whisper-large-v3_turbo",
+            "openai_whisper-large-v3",
+            "openai_whisper-large-v2",
+            "openai_whisper-medium.en",
+            "openai_whisper-small.en",
+        ]
+
+        // Use whatever is already cached locally — no network call
+        let local = WhisperKit.listLocalModels()
+        let model = preferred.first { local.contains($0) }
+                 ?? "openai_whisper-small.en"  // guaranteed fallback (download only if nothing cached)
+
+        let config = WhisperKitConfig(model: model, verbose: false, logLevel: .none)
+        whisper = try await WhisperKit(config)
     }
 
     func transcribe(audioArray: [Float]) async throws -> [TranscriptionResult]? {
