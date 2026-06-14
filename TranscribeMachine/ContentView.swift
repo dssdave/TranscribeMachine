@@ -255,7 +255,7 @@ struct ContentView: View {
                     }
                     .padding(12)
                 }
-                .frame(minHeight: 140, maxHeight: 500)
+                .frame(minHeight: 80, maxHeight: 200)
                 .onChange(of: transcriber.segments.count) { _ in
                     if !showingDiarized, let last = transcriber.segments.last {
                         withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
@@ -344,7 +344,7 @@ struct ContentView: View {
                             .padding(16)
                             .textSelection(.enabled)
                     }
-                    .frame(minHeight: 100, maxHeight: 320)
+                    .frame(minHeight: 80, maxHeight: 240)
                     .background(Color.white.opacity(0.04))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.07), lineWidth: 1))

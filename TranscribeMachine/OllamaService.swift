@@ -171,7 +171,7 @@ class OllamaService: ObservableObject {
         case "Zoom call", "Microsoft Teams call", "FaceTime call", "Webex call":
             return "Context: This is a transcript of a \(source). It may have two or more participants.\n"
         case "browser audio":
-            return "Context: This audio was captured from a browser — it is likely a YouTube video, podcast, or online presentation with a single presenter, not a two-way meeting. Do not expect action items or decisions unless explicitly stated.\n"
+            return "Context: This audio is from a browser (YouTube, podcast, or online video). It is a one-way presentation — one person speaking, not a live meeting. The speaker may be labeled \"Caller\" in the transcript but they are a video/podcast presenter, not a live caller. Do not generate action items or decisions unless the presenter explicitly stated them as commitments.\n"
         case "Discord":
             return "Context: This audio was captured from Discord.\n"
         case "Loom recording":
