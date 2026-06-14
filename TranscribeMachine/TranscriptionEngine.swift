@@ -10,8 +10,8 @@ struct TranscriptSegment: Identifiable {
     let timestamp: Date
 
     enum Speaker: String {
-        case local = "Local"       // microphone — person in room
-        case remote = "Remote"     // system audio — Zoom/Meet caller
+        case local = "Local"
+        case remote = "Remote"
 
         var color: Color {
             switch self {
@@ -28,8 +28,25 @@ struct TranscriptSegment: Identifiable {
         }
     }
 
-    // Plain text for AI consumption
     var labeledLine: String { "[\(speaker.rawValue)]: \(text)" }
+}
+
+// Actor isolates WhisperKit to avoid Swift 6 sendability errors
+private actor WhisperActor {
+    nonisolated(unsafe) var whisper: WhisperKit?
+
+    func load() async throws {
+        let config = WhisperKitConfig(
+            model: "openai_whisper-small.en",
+            verbose: false,
+            logLevel: .none
+        )
+        whisper = try await WhisperKit(config)
+    }
+
+    func transcribe(audioArray: [Float]) async throws -> [TranscriptionResult]? {
+        try await whisper?.transcribe(audioArray: audioArray)
+    }
 }
 
 @MainActor
@@ -40,23 +57,18 @@ class TranscriptionEngine: ObservableObject {
     @Published var downloadProgress: Double = 0
     @Published var modelStatus: String = "Not downloaded"
 
-    // Flat labeled text for AI
     var fullTranscript: String {
         segments.map { $0.labeledLine }.joined(separator: "\n")
     }
 
-    // Plain text (no labels) for display fallback
     var plainTranscript: String {
         segments.map { $0.text }.joined(separator: " ")
     }
 
-    private var whisper: WhisperKit?
-
-    // Separate rolling buffers per source
+    private let whisperActor = WhisperActor()
     private var micBuffer: [Float] = []
     private var systemBuffer: [Float] = []
-    private let chunkSamples = Int(5.0 * 16000.0)  // 5s @ 16kHz
-
+    private let chunkSamples = Int(5.0 * 16000.0)
     private var isMicTranscribing = false
     private var isSystemTranscribing = false
 
@@ -69,12 +81,7 @@ class TranscriptionEngine: ObservableObject {
 
         Task {
             do {
-                let config = WhisperKitConfig(
-                    model: "openai_whisper-base.en",
-                    verbose: false,
-                    logLevel: .none
-                )
-                whisper = try await WhisperKit(config)
+                try await whisperActor.load()
                 modelReady = true
                 isDownloading = false
                 modelStatus = "Ready"
@@ -86,7 +93,7 @@ class TranscriptionEngine: ObservableObject {
         }
     }
 
-    // MARK: – Feed audio by source
+    // MARK: – Feed audio
 
     func feedMic(buffer: AVAudioPCMBuffer) {
         guard modelReady else { return }
@@ -110,7 +117,16 @@ class TranscriptionEngine: ObservableObject {
 
     // MARK: – Transcribe
 
+    // RMS silence gate — skip chunks that are below this energy threshold
+    private let silenceThreshold: Float = 0.02
+
+    private func isSilent(_ chunk: [Float]) -> Bool {
+        let rms = sqrt(chunk.map { $0 * $0 }.reduce(0, +) / Float(chunk.count))
+        return rms < silenceThreshold
+    }
+
     private func transcribeChunk(_ chunk: [Float], speaker: TranscriptSegment.Speaker) {
+        guard !isSilent(chunk) else { return }
         if speaker == .local { isMicTranscribing = true }
         else { isSystemTranscribing = true }
 
@@ -122,7 +138,7 @@ class TranscriptionEngine: ObservableObject {
                 }
             }
             do {
-                let results = try await whisper?.transcribe(audioArray: chunk)
+                let results = try await whisperActor.transcribe(audioArray: chunk)
                 let text = results?
                     .map { $0.text }
                     .joined(separator: " ")

@@ -12,23 +12,41 @@ class AudioFileRecorder: ObservableObject {
 
     var isRecording: Bool { micActive || systemActive }
 
-    // File URLs set after recording stops
     private(set) var localFileURL: URL?
     private(set) var remoteFileURL: URL?
 
-    // Injected — feeds real-time WhisperKit
     weak var transcriptionEngine: TranscriptionEngine?
 
-    // Audio engine for mic
-    private var audioEngine = AVAudioEngine()
+    // Available mic devices
+    @Published var availableMics: [AVCaptureDevice] = []
+    @Published var selectedMicID: String = ""   // uniqueID of chosen device
 
-    // File writers
+    // AVCaptureSession-based mic (replaces AVAudioEngine which crashes on macOS 15+)
+    private var captureSession: AVCaptureSession?
+    private var audioOutput: AVCaptureAudioDataOutput?
+    private var captureDelegate: FileMicDelegate?
+    private let captureQueue = DispatchQueue(label: "com.dssdave.filemic", qos: .userInitiated)
+
     private var localWriter: AVAudioFile?
-    private var remoteWriter: AVAudioFile?
 
     // ScreenCaptureKit
     private var scStream: SCStream?
     private var scOutput: SCAudioOutput?
+    private var remoteWriter: AVAudioFile?
+
+    // MARK: – Device enumeration
+
+    func refreshMicList() {
+        let discovery = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.microphone, .external],
+            mediaType: .audio,
+            position: .unspecified
+        )
+        availableMics = discovery.devices
+        if !availableMics.contains(where: { $0.uniqueID == selectedMicID }) {
+            selectedMicID = AVCaptureDevice.default(for: .audio)?.uniqueID ?? ""
+        }
+    }
 
     // MARK: – Mic
 
@@ -37,35 +55,64 @@ class AudioFileRecorder: ObservableObject {
     }
 
     private func startMic() {
-        let input = audioEngine.inputNode
-        let format = input.outputFormat(forBus: 0)
+        AVAudioApplication.requestRecordPermission { [weak self] granted in
+            guard granted else { print("Mic permission denied"); return }
+            Task { @MainActor [weak self] in self?.buildMicSession() }
+        }
+    }
+
+    private func buildMicSession() {
+        let session = AVCaptureSession()
+
+        let device = availableMics.first(where: { $0.uniqueID == selectedMicID })
+                  ?? AVCaptureDevice.default(for: .audio)
+        guard let device,
+              let input = try? AVCaptureDeviceInput(device: device),
+              session.canAddInput(input) else {
+            print("Could not set up mic input")
+            return
+        }
+        session.addInput(input)
+
+        let output = AVCaptureAudioDataOutput()
         let fileURL = tempWAV("local")
+        localFileURL = fileURL
 
-        do {
-            localWriter = try AVAudioFile(forWriting: fileURL, settings: format.settings)
-            localFileURL = fileURL
+        let delegate = FileMicDelegate(fileURL: fileURL) { [weak self] buffer in
+            let boxed = UncheckedSendableBox(buffer)
+            Task { @MainActor in self?.transcriptionEngine?.feedMic(buffer: boxed.value) }
+        }
+        output.setSampleBufferDelegate(delegate, queue: captureQueue)
 
-            input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
-                // Write to disk
-                try? self?.localWriter?.write(from: buffer)
-                // Feed live transcription
-                Task { @MainActor in
-                    self?.transcriptionEngine?.feedMic(buffer: buffer)
-                }
+        guard session.canAddOutput(output) else {
+            print("Could not add audio output")
+            return
+        }
+        session.addOutput(output)
+
+        // startRunning blocks — run it on background queue, then store refs on MainActor
+        let boxedSession  = UncheckedSendableBox(session)
+        let boxedOutput   = UncheckedSendableBox(output)
+        let boxedDelegate = UncheckedSendableBox(delegate)
+        captureQueue.async { [weak self] in
+            boxedSession.value.startRunning()
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.captureSession  = boxedSession.value
+                self.audioOutput     = boxedOutput.value
+                self.captureDelegate = boxedDelegate.value
+                self.micActive       = true
             }
-
-            try audioEngine.start()
-            micActive = true
-        } catch {
-            print("Mic start error: \(error)")
         }
     }
 
     private func stopMic() {
-        audioEngine.inputNode.removeTap(onBus: 0)
-        audioEngine.stop()
-        localWriter = nil  // flushes and closes
-        micActive = false
+        let boxed = UncheckedSendableBox(captureSession)
+        captureQueue.async { boxed.value?.stopRunning() }
+        captureSession  = nil
+        audioOutput     = nil
+        captureDelegate = nil
+        micActive       = false
     }
 
     // MARK: – System Audio
@@ -94,9 +141,8 @@ class AudioFileRecorder: ObservableObject {
 
             let output = SCAudioOutput { [weak self] buffer in
                 try? self?.remoteWriter?.write(from: buffer)
-                Task { @MainActor in
-                    self?.transcriptionEngine?.feedSystem(buffer: buffer)
-                }
+                let boxed = UncheckedSendableBox(buffer)
+                Task { @MainActor in self?.transcriptionEngine?.feedSystem(buffer: boxed.value) }
             }
             self.scOutput = output
 
@@ -115,7 +161,7 @@ class AudioFileRecorder: ObservableObject {
         try? await scStream?.stopCapture()
         scStream = nil
         scOutput = nil
-        remoteWriter = nil  // flushes and closes
+        remoteWriter = nil
         systemActive = false
     }
 
@@ -134,6 +180,37 @@ class AudioFileRecorder: ObservableObject {
     }
 }
 
+// MARK: – Sendable box
+
+final class UncheckedSendableBox<T>: @unchecked Sendable {
+    let value: T
+    init(_ value: T) { self.value = value }
+}
+
+// MARK: – Mic delegate (writes to file + forwards buffer)
+
+class FileMicDelegate: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
+    private let onBuffer: (AVAudioPCMBuffer) -> Void
+    private var writer: AVAudioFile?
+    private var pendingURL: URL?
+
+    init(fileURL: URL, onBuffer: @escaping (AVAudioPCMBuffer) -> Void) {
+        self.onBuffer = onBuffer
+        self.pendingURL = fileURL
+        super.init()
+    }
+
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        guard let buffer = sampleBuffer.asPCMBuffer() else { return }
+        if writer == nil, let url = pendingURL {
+            writer = try? AVAudioFile(forWriting: url, settings: buffer.format.settings)
+            pendingURL = nil
+        }
+        try? writer?.write(from: buffer)
+        onBuffer(buffer)
+    }
+}
+
 // MARK: – SCStreamOutput
 
 class SCAudioOutput: NSObject, SCStreamOutput {
@@ -146,7 +223,9 @@ class SCAudioOutput: NSObject, SCStreamOutput {
     }
 }
 
-// CMSampleBuffer → AVAudioPCMBuffer (shared extension)
+// MARK: – CMSampleBuffer → AVAudioPCMBuffer (float32, mono, 16kHz)
+// AVCaptureAudioDataOutput delivers interleaved int16 — must convert properly.
+
 extension CMSampleBuffer {
     func asPCMBuffer() -> AVAudioPCMBuffer? {
         guard
@@ -154,23 +233,52 @@ extension CMSampleBuffer {
             let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(desc)
         else { return nil }
 
-        let fmt = AVAudioFormat(standardFormatWithSampleRate: asbd.pointee.mSampleRate,
-                                channels: asbd.pointee.mChannelsPerFrame)
-               ?? AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1)!
-        let count = AVAudioFrameCount(CMSampleBufferGetNumSamples(self))
-        guard let buf = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: count),
-              let floats = buf.floatChannelData,
-              let block = CMSampleBufferGetDataBuffer(self) else { return nil }
+        // Source format as delivered by AVCaptureAudioDataOutput (interleaved int16)
+        guard let srcFormat = AVAudioFormat(streamDescription: asbd) else { return nil }
 
-        buf.frameLength = count
-        var ptr: UnsafeMutablePointer<CChar>?
-        var len = 0
-        CMBlockBufferGetDataPointer(block, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &len, dataPointerOut: &ptr)
-        if let raw = ptr {
-            raw.withMemoryRebound(to: Float.self, capacity: Int(count)) {
-                floats[0].initialize(from: $0, count: Int(count))
-            }
+        let frameCount = AVAudioFrameCount(CMSampleBufferGetNumSamples(self))
+        guard frameCount > 0 else { return nil }
+
+        // Build source buffer backed by the CMSampleBuffer's block buffer
+        guard let srcBuffer = AVAudioPCMBuffer(pcmFormat: srcFormat, frameCapacity: frameCount) else { return nil }
+        srcBuffer.frameLength = frameCount
+
+        guard let blockBuffer = CMSampleBufferGetDataBuffer(self) else { return nil }
+        var dataPointer: UnsafeMutablePointer<CChar>?
+        CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil,
+                                    totalLengthOut: nil, dataPointerOut: &dataPointer)
+        guard let src = dataPointer else { return nil }
+
+        // Copy raw bytes into the AVAudioPCMBuffer's mutable data pointer
+        if let intData = srcBuffer.int16ChannelData {
+            // interleaved int16: data sits in channel 0
+            memcpy(intData[0], src, Int(frameCount) * Int(srcFormat.channelCount) * MemoryLayout<Int16>.size)
+        } else if let floatData = srcBuffer.floatChannelData {
+            memcpy(floatData[0], src, Int(frameCount) * Int(srcFormat.channelCount) * MemoryLayout<Float>.size)
+        } else {
+            return nil
         }
-        return buf
+
+        // Destination: float32, mono, 16kHz (what WhisperKit expects)
+        let dstFormat = AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1)!
+        let ratio = 16000.0 / srcFormat.sampleRate
+        let dstFrameCount = AVAudioFrameCount(Double(frameCount) * ratio + 1)
+        guard let dstBuffer = AVAudioPCMBuffer(pcmFormat: dstFormat, frameCapacity: dstFrameCount) else { return nil }
+
+        guard let converter = AVAudioConverter(from: srcFormat, to: dstFormat) else { return nil }
+
+        var error: NSError?
+        var consumed = false
+        converter.convert(to: dstBuffer, error: &error) { _, outStatus in
+            if consumed {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            outStatus.pointee = .haveData
+            consumed = true
+            return srcBuffer
+        }
+        if error != nil || dstBuffer.frameLength == 0 { return nil }
+        return dstBuffer
     }
 }

@@ -1,0 +1,39 @@
+name: TranscribeMachine
+options:
+  bundleIdPrefix: com.dssdave
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+
+packages:
+  WhisperKit:
+    url: https://github.com/argmaxinc/WhisperKit.git
+    from: 0.9.0
+
+targets:
+  TranscribeMachine:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: TranscribeMachine
+        excludes:
+          - Info.plist
+          - TranscribeMachine.entitlements
+    resources:
+      - path: TranscribeMachine/Resources
+    info:
+      path: TranscribeMachine/Info.plist
+    entitlements:
+      path: TranscribeMachine/TranscribeMachine.entitlements
+    dependencies:
+      - package: WhisperKit
+        product: WhisperKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dssdave.TranscribeMachine
+        SWIFT_VERSION: "6.0"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        SWIFT_STRICT_CONCURRENCY: minimal

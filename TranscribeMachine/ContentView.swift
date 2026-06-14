@@ -27,6 +27,7 @@ struct ContentView: View {
     @State private var copiedAI         = false
     @State private var showActionItems  = true
 
+    @State private var showSettings      = false
     @State private var diarizedSegments: [DiarizedSegment] = []
     @State private var speakerNames: [String: String] = [:]
     @State private var renamingKey: String?
@@ -60,6 +61,7 @@ struct ContentView: View {
         .preferredColorScheme(.dark)
         .onAppear {
             recorder.transcriptionEngine = transcriber
+            recorder.refreshMicList()
             // Everything downloads silently on launch
             transcriber.prepareModel()
             whisperX.installIfNeeded()
@@ -81,6 +83,18 @@ struct ContentView: View {
             Spacer()
             // Single subtle status indicator
             statusIndicator
+            Button {
+                showSettings = true
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 15))
+                    .foregroundColor(Color.white.opacity(0.45))
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, 12)
+            .sheet(isPresented: $showSettings) {
+                SettingsView(recorder: recorder)
+            }
         }
         .padding(.horizontal, 32)
         .padding(.vertical, 16)
@@ -635,7 +649,58 @@ struct ChipToggleStyle: ToggleStyle {
     }
 }
 
-private func tinyButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
+// MARK: – Settings Sheet
+
+struct SettingsView: View {
+    @ObservedObject var recorder: AudioFileRecorder
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            HStack {
+                Text("Settings")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.white)
+                Spacer()
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(Color.white.opacity(0.3))
+                }
+                .buttonStyle(.plain)
+            }
+
+            Divider().background(Color.white.opacity(0.1))
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Microphone")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(Color.white.opacity(0.5))
+                Picker("", selection: $recorder.selectedMicID) {
+                    ForEach(recorder.availableMics, id: \.uniqueID) { dev in
+                        Text(dev.localizedName).tag(dev.uniqueID)
+                    }
+                }
+                .labelsHidden()
+                .disabled(recorder.micActive)
+                if recorder.micActive {
+                    Text("Stop recording to change mic")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color.white.opacity(0.3))
+                }
+            }
+
+            Spacer()
+        }
+        .padding(28)
+        .frame(width: 360, height: 240)
+        .background(Color(red: 0.08, green: 0.08, blue: 0.1))
+        .preferredColorScheme(.dark)
+        .onAppear { recorder.refreshMicList() }
+    }
+}
+
+private func tinyButton(icon: String, label: String, action: @escaping @MainActor () -> Void) -> some View {
     Button { action() } label: {
         Label(label, systemImage: icon).font(.system(size: 11))
     }
