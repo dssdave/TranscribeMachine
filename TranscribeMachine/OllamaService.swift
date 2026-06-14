@@ -230,12 +230,13 @@ class OllamaService: ObservableObject {
 
     private func generateNextSteps(transcript: String, options: AIOptions, custom: String, context: String) async -> AIResult {
         var prompt = """
-        \(context)Read the transcript and list only tasks someone explicitly said they will do.
+        \(context)Read the transcript and list only real personal commitments — tasks someone promised to do.
 
         Strict rules:
-        - The transcript must contain words like "I will", "I'll", "I'm going to" followed by a specific task
-        - Do NOT infer tasks from the topic. Do NOT add deadlines that were not spoken.
-        - If no one said they will do something specific, output only: None
+        - Only count "I will" or "I'll" when it is a genuine personal promise to complete a task
+        - Do NOT count: hypothetical scenarios ("if you lose your job, you'll..."), the speaker describing their own presentation ("I'll show you...", "I'll flip back and forth"), general advice ("you should..."), or past actions
+        - Do NOT infer, extrapolate, or add deadlines not spoken
+        - If there are no genuine commitments, output only: None
         \(customBlock(custom))
         Transcript:
         \(transcript)
@@ -293,7 +294,7 @@ class OllamaService: ObservableObject {
         case "Zoom call", "Microsoft Teams call", "FaceTime call", "Webex call":
             return "Context: This is a \(source) — may have two or more live participants.\n"
         case "browser audio":
-            return "Context: Audio from a browser (YouTube, podcast, or online video). One-way presentation — single presenter, not a live meeting. The speaker may be labeled \"Caller\" but is a video/podcast presenter. Do not generate action items or decisions unless explicitly stated.\n"
+            return "Context: This is a one-way presentation or monologue from a browser (YouTube, podcast, video). One person is speaking to an audience — there are no live participants, no agreements, and no one assigning tasks. Do NOT output any action items. Output \"None\" for any decisions section. Only summarize what the speaker discussed.\n"
         case "Discord":
             return "Context: Audio from Discord.\n"
         case "Loom recording":
