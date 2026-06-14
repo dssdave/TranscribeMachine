@@ -42,7 +42,7 @@ class OllamaService: ObservableObject {
 
     // MARK: – Public entry point
 
-    func run(action: AIAction, transcript: String, options: AIOptions) async -> AIResult {
+    func run(action: AIAction, transcript: String, options: AIOptions, customInstructions: String = "") async -> AIResult {
         await checkAvailability()
         guard isAvailable else {
             return AIResult(
@@ -52,32 +52,34 @@ class OllamaService: ObservableObject {
         }
         let model = await resolveModel()
         switch action {
-        case .recap:     return await generateRecap(transcript: transcript, options: options, model: model)
-        case .decisions: return await generateDecisions(transcript: transcript, model: model)
-        case .nextSteps: return await generateNextSteps(transcript: transcript, options: options, model: model)
-        case .email:     return await generateEmail(transcript: transcript, options: options, model: model)
+        case .recap:     return await generateRecap(transcript: transcript, options: options, custom: customInstructions, model: model)
+        case .decisions: return await generateDecisions(transcript: transcript, custom: customInstructions, model: model)
+        case .nextSteps: return await generateNextSteps(transcript: transcript, options: options, custom: customInstructions, model: model)
+        case .email:     return await generateEmail(transcript: transcript, options: options, custom: customInstructions, model: model)
         }
     }
 
     // MARK: – Recap
 
-    private func generateRecap(transcript: String, options: AIOptions, model: String) async -> AIResult {
+    private func generateRecap(transcript: String, options: AIOptions, custom: String, model: String) async -> AIResult {
         var prompt = """
-        You are a meeting analyst. Read the transcript below and write a clear meeting recap.
+        You are a meeting analyst. Read the transcript below and write a concise, accurate recap.
 
-        The transcript labels speakers as "You", "Caller", or "Speaker 1", "Speaker 2", etc.
+        Speakers are labeled "You", "Caller", or "Speaker 1", "Speaker 2", etc.
 
-        Write in plain prose. Include:
-        - A 2 to 3 sentence summary of what was discussed
-        - Key topics covered
-        - Key decisions made
+        Write in plain prose:
+        - 2 to 3 sentences summarizing what was discussed
+        - Key topics covered (only topics that were actually discussed)
+        - Key decisions made — only if someone clearly said "we decided" or "we agreed". If no decisions were made, omit this section.
+
+        Be accurate. Do not infer, assume, or embellish. Only write what is supported by the transcript.
         """
 
         if options.includeActionItems {
             prompt += actionItemInstruction(owners: options.includeOwners, deadlines: options.includeDeadlines)
         }
 
-        prompt += formatRule + "\n\nTranscript:\n\(transcript)"
+        prompt += customBlock(custom) + formatRule + "\n\nTranscript:\n\(transcript)"
 
         let raw = await generate(prompt: prompt, model: model)
         let clean = stripMarkdown(raw)
@@ -86,14 +88,17 @@ class OllamaService: ObservableObject {
 
     // MARK: – Key Decisions
 
-    private func generateDecisions(transcript: String, model: String) async -> AIResult {
+    private func generateDecisions(transcript: String, custom: String, model: String) async -> AIResult {
         let prompt = """
-        You are a meeting analyst. Read the transcript below and extract only the firm decisions made or agreed upon.
+        You are a meeting analyst. Extract only firm decisions from the transcript below.
 
-        The transcript labels speakers as "You", "Caller", or "Speaker 1", "Speaker 2", etc.
+        Speakers are labeled "You", "Caller", or "Speaker 1", "Speaker 2", etc.
 
-        List each decision clearly and concisely. Do not include discussion or speculation, only decisions that were actually agreed on.
-        \(formatRule)
+        A firm decision means someone explicitly said they WILL do something, or both parties AGREED on something. Phrases like "we decided", "we agreed", "we will", "let's go with" count. Phrases like "we should", "maybe", "I think", "we could" do NOT count.
+
+        List each firm decision on its own line. Keep each one brief.
+        If no firm decisions were made, write: "No firm decisions were made in this meeting."
+        \(customBlock(custom))\(formatRule)
 
         Transcript:
         \(transcript)
@@ -105,15 +110,20 @@ class OllamaService: ObservableObject {
 
     // MARK: – Next Steps
 
-    private func generateNextSteps(transcript: String, options: AIOptions, model: String) async -> AIResult {
+    private func generateNextSteps(transcript: String, options: AIOptions, custom: String, model: String) async -> AIResult {
         var prompt = """
-        You are a meeting analyst. Read the transcript below and list every follow-up task, commitment, or thing that needs to happen after this meeting.
+        You are a meeting analyst. List only the explicit follow-up commitments from the transcript below.
 
-        The transcript labels speakers as "You", "Caller", or "Speaker 1", "Speaker 2", etc. When referring to "You", use "you". When referring to others, use "Caller" or their name if mentioned.
+        Speakers are labeled "You", "Caller", or "Speaker 1", "Speaker 2", etc. Refer to "You" as "you" and others by name or "caller".
+
+        A commitment means someone said they WILL do something specific. "I'll send that over", "I'll follow up by Friday" count. Vague intentions like "we should look into that" do NOT count.
+
+        If no one explicitly committed to anything, write: "No action items were explicitly committed to in this meeting."
+        Maximum 5 items. If you find more, keep only the clearest ones.
         """
 
         prompt += actionItemInstruction(owners: options.includeOwners, deadlines: options.includeDeadlines)
-        prompt += formatRule + "\n\nTranscript:\n\(transcript)"
+        prompt += customBlock(custom) + formatRule + "\n\nTranscript:\n\(transcript)"
 
         let raw = await generate(prompt: prompt, model: model)
         let clean = stripMarkdown(raw)
@@ -122,33 +132,31 @@ class OllamaService: ObservableObject {
 
     // MARK: – Email
 
-    private func generateEmail(transcript: String, options: AIOptions, model: String) async -> AIResult {
+    private func generateEmail(transcript: String, options: AIOptions, custom: String, model: String) async -> AIResult {
         var prompt = """
-        You are a professional email writer. Based on the meeting transcript below, write a follow-up email.
+        You are a professional email writer. Write a follow-up email based on the meeting transcript below.
 
-        The transcript labels speakers as "You", "Caller", or "Speaker 1", "Speaker 2", etc. "You" is the email sender. The primary other speaker is the email recipient.
+        Speakers are labeled "You", "Caller", or "Speaker 1", "Speaker 2", etc. "You" is the email sender. The primary other speaker is the recipient.
 
         The email should include:
         - Subject line
-        - Brief opening
-        - Summary of what was discussed
-        - Key decisions
+        - Brief opening referencing the meeting
+        - Summary of what was discussed (accurate — only what was actually talked about)
+        - Key decisions, if any were made
         """
 
         if options.includeActionItems {
-            prompt += "\n        - Action items"
-            if options.includeOwners { prompt += " with who is responsible" }
-            if options.includeDeadlines { prompt += " and any deadlines" }
+            prompt += "\n        - Action items (only explicit commitments — maximum 5)"
         }
 
-        prompt += "\n        - Professional closing\n\nUse [Your Name] for the sender."
+        prompt += "\n        - Professional closing. Use [Your Name] for the sender."
 
         if options.includeActionItems {
             prompt += actionItemInstruction(owners: options.includeOwners, deadlines: options.includeDeadlines,
-                                            intro: "\n\nAfter the email body, list each action item:")
+                                            intro: "\n\nAfter the email body, list each explicitly committed action item:")
         }
 
-        prompt += formatRule + "\n\nTranscript:\n\(transcript)"
+        prompt += customBlock(custom) + formatRule + "\n\nTranscript:\n\(transcript)"
 
         let raw = await generate(prompt: prompt, model: model)
         let clean = stripMarkdown(raw)
@@ -157,21 +165,27 @@ class OllamaService: ObservableObject {
 
     // MARK: – Prompt helpers
 
-    private func actionItemInstruction(owners: Bool, deadlines: Bool, intro: String = "\n\nList each action item:") -> String {
+    private func actionItemInstruction(owners: Bool, deadlines: Bool, intro: String = "\n\nFor each explicit commitment, write one line:") -> String {
         var s = intro + "\n"
-        s += "ACTION: what needs to be done"
-        if owners  { s += " — Owner: you / caller / their name" }
-        if deadlines { s += " — Due: specific deadline or none" }
+        s += "ACTION: what was committed to"
+        if owners  { s += " — Owner: you / caller / name" }
+        if deadlines { s += " — Due: deadline or none" }
         s += """
 
 
-        Rules for action items:
-        - One action item per line, starting with "ACTION:"
-        - Do not number them
-        - For Owner: write "you" if it is the in-room person's task, "caller" if it is the remote person's task, or the person's actual name if mentioned
-        - Do not write [Local] or [Remote] anywhere in the output
+        Rules:
+        - Only include tasks someone explicitly said they WILL do — no inferred or suggested tasks
+        - If there are no explicit commitments, do not output any ACTION: lines at all
+        - One ACTION: per line, no numbering
+        - Owner: use "you" for the in-room person, "caller" for the remote person, or their actual name
+        - Do not write [You], [Caller], [Local], or [Remote] in brackets anywhere
         """
         return s
+    }
+
+    private func customBlock(_ instructions: String) -> String {
+        guard !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "" }
+        return "\n\nAdditional instructions from the user: \(instructions.trimmingCharacters(in: .whitespacesAndNewlines))"
     }
 
     private let formatRule = """
@@ -192,8 +206,8 @@ class OllamaService: ObservableObject {
         var result = lines.joined(separator: "\n")
         result = result.replacingOccurrences(of: "**", with: "")
         result = result.replacingOccurrences(of: "__", with: "")
-        result = result.replacingOccurrences(of: "*", with: "")
-        result = result.replacingOccurrences(of: "_", with: "")
+        result = result.replacingOccurrences(of: "*",  with: "")
+        result = result.replacingOccurrences(of: "_",  with: "")
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -206,7 +220,7 @@ class OllamaService: ObservableObject {
             "model": model,
             "prompt": prompt,
             "stream": false,
-            "options": ["temperature": 0.4, "num_predict": 900]
+            "options": ["temperature": 0.3, "num_predict": 700]
         ]
 
         guard let data = try? JSONSerialization.data(withJSONObject: body) else { return "Error: encoding" }
@@ -230,21 +244,17 @@ class OllamaService: ObservableObject {
     }
 
     // MARK: – Parse action items
-    // Handles: numbered prefixes, owner on continuation line, multiple separator styles
 
     private func parseActionItems(from text: String) -> [ActionItem] {
-        // Pre-process: merge ACTION: lines with orphan "- Owner:" / "- Due:" continuation lines
         let rawLines = text.components(separatedBy: "\n")
         var merged: [String] = []
         var i = 0
         while i < rawLines.count {
             var line = rawLines[i].trimmingCharacters(in: .whitespaces)
-            // Strip leading "1." or "1)" numbering
             if let r = line.range(of: #"^\d+[\.\)]\s+"#, options: .regularExpression) {
                 line = String(line[r.upperBound...])
             }
             if line.uppercased().hasPrefix("ACTION:") {
-                // Absorb continuation lines that are orphaned owner/due fields
                 var j = i + 1
                 while j < rawLines.count {
                     let next = rawLines[j].trimmingCharacters(in: .whitespaces)
@@ -288,7 +298,6 @@ class OllamaService: ObservableObject {
                 }
             }
 
-            // Sanitize any residual bracket notation the model still outputs
             task  = task.replacingOccurrences(of: "[Local]",  with: "you")
                         .replacingOccurrences(of: "[Remote]", with: "caller")
                         .replacingOccurrences(of: "[You]",    with: "you")
