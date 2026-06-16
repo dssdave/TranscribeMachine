@@ -4,12 +4,10 @@ options:
   deploymentTarget:
     macOS: "14.0"
   xcodeVersion: "16.0"
-
 packages:
   WhisperKit:
     url: https://github.com/argmaxinc/WhisperKit.git
     from: 0.9.0
-
 targets:
   TranscribeMachine:
     type: application
@@ -33,7 +31,15 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dssdave.TranscribeMachine
         SWIFT_VERSION: "6.0"
-        CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: ""
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         SWIFT_STRICT_CONCURRENCY: minimal
+        ENABLE_HARDENED_RUNTIME: YES
+      configs:
+        Debug:
+          CODE_SIGN_STYLE: Automatic
+          DEVELOPMENT_TEAM: D7LK7963NP
+        Release:
+          CODE_SIGN_STYLE: Manual
+          DEVELOPMENT_TEAM: D7LK7963NP
+          CODE_SIGN_IDENTITY: Apple Distribution
+          PROVISIONING_PROFILE_SPECIFIER: ""
