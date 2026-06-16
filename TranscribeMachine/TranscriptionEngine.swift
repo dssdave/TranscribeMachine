@@ -46,10 +46,9 @@ private actor WhisperActor {
             "openai_whisper-small.en",
         ]
 
-        // Use whatever is already cached locally — no network call
-        let local = WhisperKit.listLocalModels()
-        let model = preferred.first { local.contains($0) }
-                 ?? "openai_whisper-small.en"  // guaranteed fallback (download only if nothing cached)
+        
+
+        let model = preferred.first ?? "openai_whisper-small.en"
 
         let config = WhisperKitConfig(model: model, verbose: false, logLevel: .none)
         whisper = try await WhisperKit(config)

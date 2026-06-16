@@ -117,7 +117,7 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					48141A00670A4D8D1EE1D9FE = {
-						ProvisioningStyle = Automatic;
+						DevelopmentTeam = D7LK7963NP;
 					};
 				};
 			};
@@ -178,9 +178,11 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = TranscribeMachine/TranscribeMachine.entitlements;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEVELOPMENT_TEAM = 8BL642F2QH;
+				DEVELOPMENT_TEAM = D7LK7963NP;
+				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = TranscribeMachine/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -188,6 +190,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.dssdave.TranscribeMachine;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
 				SWIFT_STRICT_CONCURRENCY = minimal;
 				SWIFT_VERSION = 6.0;
@@ -257,7 +260,8 @@
 				CODE_SIGN_ENTITLEMENTS = TranscribeMachine/TranscribeMachine.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEVELOPMENT_TEAM = 8BL642F2QH;
+				DEVELOPMENT_TEAM = D7LK7963NP;
+				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = TranscribeMachine/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
