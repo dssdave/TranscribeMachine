@@ -67,7 +67,10 @@ struct ContentView: View {
             }
 
             if renamingKey != nil { renameOverlay }
-            if showSettings    { settingsOverlay }
+            if showSettings {
+                settingsOverlay
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
         }
         .preferredColorScheme(.dark)
         .onAppear {
@@ -479,100 +482,104 @@ struct ContentView: View {
         }
     }
 
-    // MARK: – Settings overlay (tap outside to dismiss)
+    // MARK: – Settings (full-window replacement)
 
     var settingsOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.45).ignoresSafeArea()
-                .onTapGesture {
-                    withAnimation(.easeInOut(duration: 0.15)) { showSettings = false }
+        VStack(spacing: 0) {
+            HStack {
+                Text("Settings")
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white)
+                Spacer()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { showSettings = false }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 17))
+                        .foregroundColor(Color.white.opacity(0.35))
                 }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 12)
 
-            VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Text("Settings")
-                        .font(.system(size: 15, weight: .semibold)).foregroundColor(.white)
-                    Spacer()
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) { showSettings = false }
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 17))
-                            .foregroundColor(Color.white.opacity(0.3))
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.bottom, 16)
+            Divider().background(Color.white.opacity(0.08))
 
-                Divider().background(Color.white.opacity(0.1))
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Microphone")
-                        .font(.system(size: 11, weight: .medium)).foregroundColor(Color.white.opacity(0.5))
-                    Picker("", selection: $recorder.selectedMicID) {
-                        ForEach(recorder.availableMics, id: \.uniqueID) { dev in
-                            Text(dev.localizedName).tag(dev.uniqueID)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    settingsRow("Microphone") {
+                        Picker("", selection: $recorder.selectedMicID) {
+                            ForEach(recorder.availableMics, id: \.uniqueID) { dev in
+                                Text(dev.localizedName).tag(dev.uniqueID)
+                            }
+                        }
+                        .labelsHidden()
+                        .disabled(recorder.micActive)
+                        if recorder.micActive {
+                            Text("Stop recording to change mic")
+                                .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
                         }
                     }
-                    .labelsHidden()
-                    .disabled(recorder.micActive)
-                    if recorder.micActive {
-                        Text("Stop recording to change mic")
-                            .font(.system(size: 10)).foregroundColor(Color.white.opacity(0.3))
+
+                    Divider().background(Color.white.opacity(0.06)).padding(.horizontal, 22)
+
+                    settingsRow("Transcription Quality") {
+                        Picker("", selection: $whisperModelQuality) {
+                            Text("Fast").tag("fast")
+                            Text("Balanced").tag("balanced")
+                            Text("Quality").tag("quality")
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        Text("Changes apply immediately. Fast uses the smallest model; Quality the largest.")
+                            .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Divider().background(Color.white.opacity(0.06)).padding(.horizontal, 22)
+
+                    settingsRow("Auto-Stop") {
+                        Picker("", selection: $silenceTimeoutMinutes) {
+                            Text("Off").tag(0)
+                            Text("5 min").tag(5)
+                            Text("10 min").tag(10)
+                            Text("15 min").tag(15)
+                            Text("30 min").tag(30)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        Text("Stops the recording automatically after this much silence.")
+                            .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                .padding(.vertical, 16)
-
-                Divider().background(Color.white.opacity(0.1))
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Transcription Quality")
-                        .font(.system(size: 11, weight: .medium)).foregroundColor(Color.white.opacity(0.5))
-                    Picker("", selection: $whisperModelQuality) {
-                        Text("Fast").tag("fast")
-                        Text("Balanced").tag("balanced")
-                        Text("Quality").tag("quality")
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    Text("Changes apply immediately. Fast: small model. Balanced: medium. Quality: large.")
-                        .font(.system(size: 10)).foregroundColor(Color.white.opacity(0.3))
-                }
-                .padding(.vertical, 16)
-
-                Divider().background(Color.white.opacity(0.1))
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Auto-Stop")
-                        .font(.system(size: 11, weight: .medium)).foregroundColor(Color.white.opacity(0.5))
-                    Picker("", selection: $silenceTimeoutMinutes) {
-                        Text("Never").tag(0)
-                        Text("5 min").tag(5)
-                        Text("10 min").tag(10)
-                        Text("15 min").tag(15)
-                        Text("30 min").tag(30)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    Text("Stops recording automatically after silence.")
-                        .font(.system(size: 10)).foregroundColor(Color.white.opacity(0.3))
-                }
-                .padding(.vertical, 16)
-
-                Spacer()
-
-                Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")")
-                    .font(.system(size: 10))
-                    .foregroundColor(Color.white.opacity(0.2))
-                    .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 4)
             }
-            .padding(24)
-            .frame(width: 310, height: 430)
-            .background(Color(red: 0.10, green: 0.10, blue: 0.13))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .shadow(color: .black.opacity(0.5), radius: 40)
-            .onAppear { recorder.refreshMicList() }
+
+            Spacer()
+
+            Divider().background(Color.white.opacity(0.06))
+            Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")")
+                .font(.system(size: 10))
+                .foregroundColor(Color.white.opacity(0.2))
+                .padding(.vertical, 10)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(red: 0.06, green: 0.06, blue: 0.08).ignoresSafeArea())
+        .onAppear { recorder.refreshMicList() }
+    }
+
+    private func settingsRow<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(Color.white.opacity(0.4))
+                .textCase(.uppercase)
+                .kerning(0.5)
+            content()
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 18)
     }
 
     // MARK: – Logic
