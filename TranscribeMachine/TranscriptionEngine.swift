@@ -55,7 +55,9 @@ private actor WhisperActor {
             preferred = ["openai_whisper-small.en", "openai_whisper-base.en"]
         }
 
-        let local = WhisperKit.listLocalModels()
+        let modelsDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml")
+        let local = (try? FileManager.default.contentsOfDirectory(atPath: modelsDir.path)) ?? []
         let model = preferred.first { local.contains($0) } ?? preferred.last!
         let config = WhisperKitConfig(model: model, verbose: false, logLevel: .none)
         whisper = try await WhisperKit(config)

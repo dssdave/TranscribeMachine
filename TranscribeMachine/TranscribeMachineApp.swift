@@ -5,7 +5,7 @@ private func pinWindowWidth() {
     DispatchQueue.main.async {
         guard let window = NSApp.keyWindow else { return }
         window.minSize = NSSize(width: 420, height: 440)
-        window.maxSize = NSSize(width: 420, height: .greatestFiniteMagnitude)
+        window.maxSize = NSSize(width: 420, height: CGFloat.greatestFiniteMagnitude)
         if window.frame.width != 420 {
             var f = window.frame
             f.origin.x += (f.width - 420) / 2

@@ -92,7 +92,7 @@ class AudioFileRecorder: ObservableObject {
             AVLinearPCMBitDepthKey:       32,
             AVLinearPCMIsFloatKey:        true,
             AVLinearPCMIsBigEndianKey:    false,
-            AVLinearPCMIsNonInterleavedKey: true,
+            "AVLinearPCMIsNonInterleaved": true,
             AVSampleRateKey:              44100.0,
             AVNumberOfChannelsKey:        1
         ]
