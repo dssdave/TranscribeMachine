@@ -105,6 +105,13 @@ class TranscriptionEngine: ObservableObject {
 
     // MARK: – Model
 
+    func reloadModel() {
+        modelReady = false
+        loadedModel = ""
+        isDownloading = false
+        prepareModel()
+    }
+
     func prepareModel() {
         guard !isDownloading else { return }
         isDownloading = true

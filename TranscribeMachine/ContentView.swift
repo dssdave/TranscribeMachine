@@ -28,7 +28,7 @@ struct ContentView: View {
     @State private var customInstructions = ""
 
     @AppStorage("silenceTimeoutMinutes") private var silenceTimeoutMinutes: Int = 10
-    @AppStorage("whisperModelQuality") private var whisperModelQuality: String = "fast"
+    @AppStorage("whisperModelQuality") private var whisperModelQuality: String = "balanced"
 
     @State private var showSettings = false
     @State private var diarizedSegments: [DiarizedSegment] = []
@@ -56,7 +56,7 @@ struct ContentView: View {
                 ScrollView {
                     VStack(spacing: 16) {
                         recordButtons
-                        if !isReady { setupBanner }
+                        if transcriber.modelStatus == "Download failed" { setupBanner }
                         if hasContent || recorder.isRecording { transcriptSection }
                         if hasContent && !recorder.isRecording { aiSection }
                         Spacer(minLength: 20)
@@ -75,6 +75,9 @@ struct ContentView: View {
             recorder.refreshMicList()
             transcriber.prepareModel()
             whisperX.installIfNeeded()
+        }
+        .onChange(of: whisperModelQuality) { _ in
+            transcriber.reloadModel()
         }
         .onChange(of: recorder.isRecording) { isRecording in
             if isRecording {
@@ -123,7 +126,7 @@ struct ContentView: View {
     }
 
     @ViewBuilder var statusIndicator: some View {
-        if whisperX.setupState == .installing || whisperX.isRunning
+        if transcriber.isDownloading || whisperX.setupState == .installing || whisperX.isRunning
             || ollama.state == .starting || ollama.state == .downloading {
             HStack(spacing: 7) {
                 ProgressView().scaleEffect(0.6)
@@ -146,25 +149,19 @@ struct ContentView: View {
     }
 
     private var currentStatusLabel: String {
-        if transcriber.isDownloading { return "Setting up transcriptionu2026" }
+        if transcriber.isDownloading    { return "Setting up…" }
         if whisperX.setupState == .installing { return "Setting up…" }
-        if whisperX.isRunning { return whisperX.progress.isEmpty ? "Analyzing…" : whisperX.progress }
-        if ollama.state == .downloading { return ollama.downloadProgress }
-        if ollama.state == .starting { return "Starting AI…" }
+        if whisperX.isRunning           { return "Processing…" }
+        if ollama.state == .downloading { return "Setting up…" }
+        if ollama.state == .starting    { return "Starting…" }
         return ""
     }
 
     var setupBanner: some View {
         HStack(spacing: 10) {
-            if transcriber.modelStatus == "Download failed" {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange)
-                Text("Transcription setup failed — please check your internet connection and relaunch.")
-                    .font(.system(size: 12)).foregroundColor(Color.white.opacity(0.6))
-            } else {
-                ProgressView().scaleEffect(0.7)
-                Text("Setting up transcription engine (one-time download, may take a minute)…")
-                    .font(.system(size: 12)).foregroundColor(Color.white.opacity(0.5))
-            }
+            Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange)
+            Text("Setup failed. Check your connection and relaunch.")
+                .font(.system(size: 12)).foregroundColor(Color.white.opacity(0.6))
             Spacer()
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
@@ -491,7 +488,7 @@ struct ContentView: View {
                     withAnimation(.easeInOut(duration: 0.15)) { showSettings = false }
                 }
 
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     Text("Settings")
                         .font(.system(size: 15, weight: .semibold)).foregroundColor(.white)
@@ -505,10 +502,11 @@ struct ContentView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                .padding(.bottom, 16)
 
                 Divider().background(Color.white.opacity(0.1))
 
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text("Microphone")
                         .font(.system(size: 11, weight: .medium)).foregroundColor(Color.white.opacity(0.5))
                     Picker("", selection: $recorder.selectedMicID) {
@@ -523,10 +521,11 @@ struct ContentView: View {
                             .font(.system(size: 10)).foregroundColor(Color.white.opacity(0.3))
                     }
                 }
+                .padding(.vertical, 16)
 
                 Divider().background(Color.white.opacity(0.1))
 
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text("Transcription Quality")
                         .font(.system(size: 11, weight: .medium)).foregroundColor(Color.white.opacity(0.5))
                     Picker("", selection: $whisperModelQuality) {
@@ -536,9 +535,10 @@ struct ContentView: View {
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
-                    Text("Fast: ~8s updates. Balanced: ~10s. Quality: ~15s, largest model. Takes effect on next launch.")
+                    Text("Changes apply immediately. Fast: small model. Balanced: medium. Quality: large.")
                         .font(.system(size: 10)).foregroundColor(Color.white.opacity(0.3))
                 }
+                .padding(.vertical, 16)
 
                 Divider().background(Color.white.opacity(0.1))
 
@@ -554,9 +554,10 @@ struct ContentView: View {
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
-                    Text("Recording stops if no audio is detected for this long.")
+                    Text("Stops recording automatically after silence.")
                         .font(.system(size: 10)).foregroundColor(Color.white.opacity(0.3))
                 }
+                .padding(.vertical, 16)
 
                 Spacer()
 
@@ -565,8 +566,8 @@ struct ContentView: View {
                     .foregroundColor(Color.white.opacity(0.2))
                     .frame(maxWidth: .infinity, alignment: .center)
             }
-            .padding(18)
-            .frame(width: 300, height: 410)
+            .padding(24)
+            .frame(width: 310, height: 430)
             .background(Color(red: 0.10, green: 0.10, blue: 0.13))
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .shadow(color: .black.opacity(0.5), radius: 40)

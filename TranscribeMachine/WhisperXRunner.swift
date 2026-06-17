@@ -93,7 +93,7 @@ class WhisperXRunner: ObservableObject {
             .appendingPathComponent("diarize_\(source)_\(UUID().uuidString).json")
 
         isRunning = true
-        progress = "Diarizing \(source) audio…"
+        progress = "Processing…"
 
         let result = await runProcess("python3", args: [
             script.path,
@@ -117,18 +117,16 @@ class WhisperXRunner: ObservableObject {
     /// Diarize both streams and merge, sorted by start time.
     func diarizeBoth(localAudio: URL?, remoteAudio: URL?) async -> [DiarizedSegment] {
         isRunning = true
+        progress = "Processing…"
         var all: [DiarizedSegment] = []
 
-        // Run both in parallel
         async let localSegs: [DiarizedSegment] = {
             guard let url = localAudio else { return [] }
-            await MainActor.run { self.progress = "Analyzing in-room speakers…" }
             return await self.diarize(audioURL: url, source: "local")
         }()
 
         async let remoteSegs: [DiarizedSegment] = {
             guard let url = remoteAudio else { return [] }
-            await MainActor.run { self.progress = "Analyzing remote speakers…" }
             return await self.diarize(audioURL: url, source: "remote")
         }()
 
