@@ -145,7 +145,7 @@ class TranscriptionEngine: ObservableObject {
     // MARK: – Transcribe
 
     // RMS silence gate — skip chunks that are below this energy threshold
-    private let silenceThreshold: Float = 0.02
+    private let silenceThreshold: Float = 0.005
 
     private func isSilent(_ chunk: [Float]) -> Bool {
         let rms = sqrt(chunk.map { $0 * $0 }.reduce(0, +) / Float(chunk.count))
@@ -189,10 +189,7 @@ class TranscriptionEngine: ObservableObject {
 
     private func toFloatArray(_ buffer: AVAudioPCMBuffer) -> [Float] {
         guard let data = buffer.floatChannelData else { return [] }
-        var samples = Array(UnsafeBufferPointer(start: data[0], count: Int(buffer.frameLength)))
-        let peak = samples.map(abs).max() ?? 1.0
-        if peak > 0 { samples = samples.map { $0 / peak * 0.95 } }
-        return samples
+        return Array(UnsafeBufferPointer(start: data[0], count: Int(buffer.frameLength)))
     }
 
     func clear() {

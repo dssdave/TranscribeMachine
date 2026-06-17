@@ -259,61 +259,43 @@ class SCAudioOutput: NSObject, SCStreamOutput {
 }
 
 // MARK: – CMSampleBuffer → AVAudioPCMBuffer (float32, mono, 16kHz)
-// AVCaptureAudioDataOutput delivers interleaved int16 — must convert properly.
 
 extension CMSampleBuffer {
     func asPCMBuffer() -> AVAudioPCMBuffer? {
         guard
             let desc = CMSampleBufferGetFormatDescription(self),
-            let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(desc)
+            let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(desc),
+            let srcFormat = AVAudioFormat(streamDescription: asbd)
         else { return nil }
-
-        // Source format as delivered by AVCaptureAudioDataOutput (interleaved int16)
-        guard let srcFormat = AVAudioFormat(streamDescription: asbd) else { return nil }
 
         let frameCount = AVAudioFrameCount(CMSampleBufferGetNumSamples(self))
         guard frameCount > 0 else { return nil }
 
-        // Build source buffer backed by the CMSampleBuffer's block buffer
         guard let srcBuffer = AVAudioPCMBuffer(pcmFormat: srcFormat, frameCapacity: frameCount) else { return nil }
         srcBuffer.frameLength = frameCount
 
-        guard let blockBuffer = CMSampleBufferGetDataBuffer(self) else { return nil }
-        var dataPointer: UnsafeMutablePointer<CChar>?
-        CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil,
-                                    totalLengthOut: nil, dataPointerOut: &dataPointer)
-        guard let src = dataPointer else { return nil }
+        // CMSampleBufferCopyPCMDataIntoAudioBufferList handles any PCM layout
+        // (interleaved or non-interleaved, int16 or float) without fragile memcpy.
+        let status = CMSampleBufferCopyPCMDataIntoAudioBufferList(
+            self, at: 0, frameCount: Int32(frameCount), into: srcBuffer.mutableAudioBufferList
+        )
+        guard status == noErr else { return nil }
 
-        // Copy raw bytes into the AVAudioPCMBuffer's mutable data pointer
-        if let intData = srcBuffer.int16ChannelData {
-            // interleaved int16: data sits in channel 0
-            memcpy(intData[0], src, Int(frameCount) * Int(srcFormat.channelCount) * MemoryLayout<Int16>.size)
-        } else if let floatData = srcBuffer.floatChannelData {
-            memcpy(floatData[0], src, Int(frameCount) * Int(srcFormat.channelCount) * MemoryLayout<Float>.size)
-        } else {
-            return nil
-        }
-
-        // Destination: float32, mono, 16kHz (what WhisperKit expects)
         let dstFormat = AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1)!
-        let ratio = 16000.0 / srcFormat.sampleRate
-        let dstFrameCount = AVAudioFrameCount(Double(frameCount) * ratio + 1)
-        guard let dstBuffer = AVAudioPCMBuffer(pcmFormat: dstFormat, frameCapacity: dstFrameCount) else { return nil }
-
-        guard let converter = AVAudioConverter(from: srcFormat, to: dstFormat) else { return nil }
+        let dstFrameCount = AVAudioFrameCount(Double(frameCount) * 16000.0 / srcFormat.sampleRate + 1)
+        guard let dstBuffer  = AVAudioPCMBuffer(pcmFormat: dstFormat, frameCapacity: dstFrameCount),
+              let converter  = AVAudioConverter(from: srcFormat, to: dstFormat)
+        else { return nil }
 
         var error: NSError?
         var consumed = false
         converter.convert(to: dstBuffer, error: &error) { _, outStatus in
-            if consumed {
-                outStatus.pointee = .noDataNow
-                return nil
-            }
+            if consumed { outStatus.pointee = .noDataNow; return nil }
             outStatus.pointee = .haveData
             consumed = true
             return srcBuffer
         }
-        if error != nil || dstBuffer.frameLength == 0 { return nil }
+        guard error == nil, dstBuffer.frameLength > 0 else { return nil }
         return dstBuffer
     }
 }
