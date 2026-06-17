@@ -269,10 +269,16 @@ class SCAudioOutput: NSObject, SCStreamOutput {
 }
 
 // MARK: – CMSampleBuffer → AVAudioPCMBuffer (float32, mono, 16kHz)
-// Assumes audioSettings was set to float32 non-interleaved mono 44100 Hz.
+// audioSettings forces float32 non-interleaved mono; sample rate is read from ASBD
+// (not hardcoded) in case the hardware ignores AVSampleRateKey).
 
 extension CMSampleBuffer {
     func asPCMBuffer() -> AVAudioPCMBuffer? {
+        guard let desc = CMSampleBufferGetFormatDescription(self),
+              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(desc)
+        else { return nil }
+        let sampleRate = asbd.pointee.mSampleRate
+
         let frameCount = AVAudioFrameCount(CMSampleBufferGetNumSamples(self))
         guard frameCount > 0,
               let blockBuffer = CMSampleBufferGetDataBuffer(self)
@@ -285,17 +291,17 @@ extension CMSampleBuffer {
               let src = rawPtr
         else { return nil }
 
-        // Build a source buffer in the known format (matches audioSettings above).
-        let srcFormat = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1)!
+        // audioSettings guarantees float32 non-interleaved mono — floatChannelData is safe.
+        let srcFormat = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
         guard let srcBuffer = AVAudioPCMBuffer(pcmFormat: srcFormat, frameCapacity: frameCount),
               let floatDst  = srcBuffer.floatChannelData
         else { return nil }
         srcBuffer.frameLength = frameCount
         memcpy(floatDst[0], src, min(dataLen, Int(frameCount) * 4))
 
-        // Downsample to 16 kHz for WhisperKit.
-        let dstFormat    = AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1)!
-        let dstFrameCount = AVAudioFrameCount(Double(frameCount) * 16000.0 / 44100.0 + 1)
+        // Resample to 16 kHz for WhisperKit.
+        let dstFormat     = AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1)!
+        let dstFrameCount = AVAudioFrameCount(Double(frameCount) * 16000.0 / sampleRate + 1)
         guard let dstBuffer = AVAudioPCMBuffer(pcmFormat: dstFormat, frameCapacity: dstFrameCount),
               let converter  = AVAudioConverter(from: srcFormat, to: dstFormat)
         else { return nil }
