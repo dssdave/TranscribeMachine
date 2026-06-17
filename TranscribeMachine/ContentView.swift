@@ -489,7 +489,7 @@ struct ContentView: View {
                     withAnimation(.easeInOut(duration: 0.15)) { showSettings = false }
                 }
 
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text("Settings")
                         .font(.system(size: 15, weight: .semibold)).foregroundColor(.white)
@@ -534,7 +534,7 @@ struct ContentView: View {
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
-                    Text("Fast: light model, updates every 8s. Balanced: 15s. Quality: large model, updates every 30s — best accuracy, lowest CPU impact. Takes effect on next launch.")
+                    Text("Fast: small model, ~8s updates. Balanced: ~15s. Quality: large model, ~30s — best accuracy. Takes effect on next launch.")
                         .font(.system(size: 10)).foregroundColor(Color.white.opacity(0.3))
                 }
 
@@ -563,8 +563,8 @@ struct ContentView: View {
                     .foregroundColor(Color.white.opacity(0.2))
                     .frame(maxWidth: .infinity, alignment: .center)
             }
-            .padding(20)
-            .frame(width: 300, height: 390)
+            .padding(18)
+            .frame(width: 300, height: 410)
             .background(Color(red: 0.10, green: 0.10, blue: 0.13))
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .shadow(color: .black.opacity(0.5), radius: 40)
