@@ -79,7 +79,7 @@ Run: `do shell script "python3 ~/Documents/transcribemachine/upload_r2_api.py 2>
 
 Expects output: `UPLOAD_SUCCESS`
 
-The script uses the Cloudflare REST API directly with the OAuth token from `~/.wrangler/config/default.toml`. Token expires ~24h — if it fails with 401, re-auth: `do shell script "cd ~/Documents/1hSaved && npx wrangler login 2>&1"`
+The script reads the OAuth token dynamically from `~/.wrangler/config/default.toml` so it stays fresh. If it fails with 401/503, the token has expired — re-auth by running any wrangler deploy (which triggers a refresh), then retry.
 
 ---
 
