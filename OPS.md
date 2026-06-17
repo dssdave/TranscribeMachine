@@ -47,7 +47,13 @@ Signing certificates (in Keychain):
 cd ~/Documents/TranscribeMachine_src && git pull
 ```
 
-**2. Run ship.sh via Python wrapper** (osascript cannot run bash scripts directly)
+**2. Clear old build artifacts** (prevents stale version from being shipped)
+```bash
+rm -rf /tmp/TranscribeMachine.xcarchive /tmp/TranscribeMachine-export
+```
+Run via: `do shell script "rm -rf /tmp/TranscribeMachine.xcarchive /tmp/TranscribeMachine-export"`
+
+**3. Run ship.sh via Python wrapper** (osascript cannot run bash scripts directly)
 ```
 Script: ~/Documents/transcribemachine/run_ship.py
 ```
