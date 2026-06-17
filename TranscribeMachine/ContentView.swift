@@ -28,6 +28,7 @@ struct ContentView: View {
     @State private var customInstructions = ""
 
     @AppStorage("silenceTimeoutMinutes") private var silenceTimeoutMinutes: Int = 10
+    @AppStorage("whisperModelQuality") private var whisperModelQuality: String = "fast"
 
     @State private var showSettings = false
     @State private var diarizedSegments: [DiarizedSegment] = []
@@ -53,15 +54,15 @@ struct ContentView: View {
                 header
                 Divider().background(Color.white.opacity(0.06))
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: 16) {
                         recordButtons
                         if !isReady { setupBanner }
                         if hasContent || recorder.isRecording { transcriptSection }
                         if hasContent && !recorder.isRecording { aiSection }
-                        Spacer(minLength: 32)
+                        Spacer(minLength: 20)
                     }
-                    .padding(.horizontal, 32)
-                    .padding(.top, 28)
+                    .padding(.horizontal, 22)
+                    .padding(.top, 18)
                 }
             }
 
@@ -97,12 +98,12 @@ struct ContentView: View {
 
     var header: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text("TranscribeMachine")
-                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .foregroundColor(.white)
                 Text("Local · Private · Offline")
-                    .font(.system(size: 11))
+                    .font(.system(size: 10))
                     .foregroundColor(Color.white.opacity(0.3))
             }
             Spacer()
@@ -111,14 +112,14 @@ struct ContentView: View {
                 withAnimation(.easeInOut(duration: 0.15)) { showSettings = true }
             } label: {
                 Image(systemName: "gearshape")
-                    .font(.system(size: 15))
+                    .font(.system(size: 13))
                     .foregroundColor(Color.white.opacity(0.45))
             }
             .buttonStyle(.plain)
-            .padding(.leading, 12)
+            .padding(.leading, 10)
         }
-        .padding(.horizontal, 32)
-        .padding(.vertical, 16)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 10)
     }
 
     @ViewBuilder var statusIndicator: some View {
@@ -172,8 +173,8 @@ struct ContentView: View {
     // MARK: – Record Buttons
 
     var recordButtons: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 16) {
+        VStack(spacing: 8) {
+            HStack(spacing: 10) {
                 RecordButton(
                     title: "Microphone", subtitle: "In-room", icon: "mic.fill",
                     accentColor: speakerPalette[0], isActive: recorder.micActive, isDisabled: !isReady
@@ -185,16 +186,31 @@ struct ContentView: View {
                 ) { recorder.toggleSystemAudio() }
             }
 
+            if recorder.micPermissionDenied {
+                PermissionBanner(
+                    message: "Microphone access denied. Open System Settings → Privacy & Security → Microphone and enable TranscribeMachine.",
+                    buttonLabel: "Open Settings",
+                    action: { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!) }
+                )
+            }
+
+            if recorder.screenRecordingPermissionDenied {
+                PermissionBanner(
+                    message: "Screen Recording access required for Computer Audio. Open System Settings → Privacy & Security → Screen Recording and enable TranscribeMachine.",
+                    buttonLabel: "Open Settings",
+                    action: { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!) }
+                )
+            }
 
             if recorder.isRecording {
                 Button { stopRecording() } label: {
-                    HStack(spacing: 7) {
+                    HStack(spacing: 6) {
                         Image(systemName: "stop.circle.fill")
                         Text("Stop")
                     }
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
+                    .padding(.vertical, 7)
                 }
                 .buttonStyle(StopButtonStyle())
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -278,7 +294,7 @@ struct ContentView: View {
                     }
                     .padding(12)
                 }
-                .frame(minHeight: 80, maxHeight: 200)
+                .frame(minHeight: 56, maxHeight: 140)
                 .onChange(of: transcriber.segments.count) { _ in
                     if !showingDiarized, let last = transcriber.segments.last {
                         withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
@@ -367,7 +383,7 @@ struct ContentView: View {
                             .padding(16)
                             .textSelection(.enabled)
                     }
-                    .frame(minHeight: 80, maxHeight: 240)
+                    .frame(minHeight: 56, maxHeight: 168)
                     .background(Color.white.opacity(0.04))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.07), lineWidth: 1))
@@ -473,16 +489,16 @@ struct ContentView: View {
                     withAnimation(.easeInOut(duration: 0.15)) { showSettings = false }
                 }
 
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 16) {
                 HStack {
                     Text("Settings")
-                        .font(.system(size: 18, weight: .semibold)).foregroundColor(.white)
+                        .font(.system(size: 15, weight: .semibold)).foregroundColor(.white)
                     Spacer()
                     Button {
                         withAnimation(.easeInOut(duration: 0.15)) { showSettings = false }
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 20))
+                            .font(.system(size: 17))
                             .foregroundColor(Color.white.opacity(0.3))
                     }
                     .buttonStyle(.plain)
@@ -490,9 +506,9 @@ struct ContentView: View {
 
                 Divider().background(Color.white.opacity(0.1))
 
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text("Microphone")
-                        .font(.system(size: 12, weight: .medium)).foregroundColor(Color.white.opacity(0.5))
+                        .font(.system(size: 11, weight: .medium)).foregroundColor(Color.white.opacity(0.5))
                     Picker("", selection: $recorder.selectedMicID) {
                         ForEach(recorder.availableMics, id: \.uniqueID) { dev in
                             Text(dev.localizedName).tag(dev.uniqueID)
@@ -502,15 +518,31 @@ struct ContentView: View {
                     .disabled(recorder.micActive)
                     if recorder.micActive {
                         Text("Stop recording to change mic")
-                            .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
+                            .font(.system(size: 10)).foregroundColor(Color.white.opacity(0.3))
                     }
                 }
 
                 Divider().background(Color.white.opacity(0.1))
 
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Transcription Quality")
+                        .font(.system(size: 11, weight: .medium)).foregroundColor(Color.white.opacity(0.5))
+                    Picker("", selection: $whisperModelQuality) {
+                        Text("Fast").tag("fast")
+                        Text("Balanced").tag("balanced")
+                        Text("Quality").tag("quality")
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    Text("Fast: light model, updates every 8s. Balanced: 15s. Quality: large model, updates every 30s — best accuracy, lowest CPU impact. Takes effect on next launch.")
+                        .font(.system(size: 10)).foregroundColor(Color.white.opacity(0.3))
+                }
+
+                Divider().background(Color.white.opacity(0.1))
+
+                VStack(alignment: .leading, spacing: 8) {
                     Text("Auto-Stop")
-                        .font(.system(size: 12, weight: .medium)).foregroundColor(Color.white.opacity(0.5))
+                        .font(.system(size: 11, weight: .medium)).foregroundColor(Color.white.opacity(0.5))
                     Picker("", selection: $silenceTimeoutMinutes) {
                         Text("Never").tag(0)
                         Text("5 min").tag(5)
@@ -521,15 +553,20 @@ struct ContentView: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     Text("Recording stops if no audio is detected for this long.")
-                        .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
+                        .font(.system(size: 10)).foregroundColor(Color.white.opacity(0.3))
                 }
 
                 Spacer()
+
+                Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")")
+                    .font(.system(size: 10))
+                    .foregroundColor(Color.white.opacity(0.2))
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
-            .padding(28)
-            .frame(width: 380, height: 400)
+            .padding(20)
+            .frame(width: 300, height: 390)
             .background(Color(red: 0.10, green: 0.10, blue: 0.13))
-            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
             .shadow(color: .black.opacity(0.5), radius: 40)
             .onAppear { recorder.refreshMicList() }
         }
@@ -706,29 +743,29 @@ struct RecordButton: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 12) {
+            VStack(spacing: 8) {
                 ZStack {
                     if isActive {
-                        Circle().fill(accentColor.opacity(0.18)).frame(width: 82, height: 82)
+                        Circle().fill(accentColor.opacity(0.18)).frame(width: 56, height: 56)
                             .scaleEffect(hovering ? 1.08 : 1.0)
                             .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: isActive)
                     }
-                    Circle().fill(isActive ? accentColor : accentColor.opacity(0.12)).frame(width: 64, height: 64)
-                    Image(systemName: icon).font(.system(size: 24, weight: .medium))
+                    Circle().fill(isActive ? accentColor : accentColor.opacity(0.12)).frame(width: 44, height: 44)
+                    Image(systemName: icon).font(.system(size: 18, weight: .medium))
                         .foregroundColor(isActive ? .white : accentColor.opacity(0.7))
                 }
                 VStack(spacing: 2) {
-                    Text(title).font(.system(size: 14, weight: .semibold))
+                    Text(title).font(.system(size: 13, weight: .semibold))
                         .foregroundColor(isDisabled ? Color.white.opacity(0.2) : Color.white.opacity(isActive ? 1 : 0.8))
-                    Text(isActive ? "Recording…" : subtitle).font(.system(size: 11))
+                    Text(isActive ? "Recording…" : subtitle).font(.system(size: 10))
                         .foregroundColor(isActive ? accentColor : Color.white.opacity(0.3))
                 }
             }
-            .frame(maxWidth: .infinity).padding(.vertical, 24)
+            .frame(maxWidth: .infinity).padding(.vertical, 14)
             .background(
-                RoundedRectangle(cornerRadius: 16)
+                RoundedRectangle(cornerRadius: 12)
                     .fill(isActive ? accentColor.opacity(0.1) : Color.white.opacity(hovering ? 0.05 : 0.03))
-                    .overlay(RoundedRectangle(cornerRadius: 16)
+                    .overlay(RoundedRectangle(cornerRadius: 12)
                         .stroke(isActive ? accentColor.opacity(0.4) : Color.white.opacity(0.06), lineWidth: 1))
             )
         }
@@ -749,6 +786,29 @@ struct RecordingPulse: View {
             Text("REC").font(.system(size: 10, weight: .bold)).foregroundColor(Color.red.opacity(0.8)).kerning(1.2)
         }
         .onAppear { pulsing = true }
+    }
+}
+
+struct PermissionBanner: View {
+    let message: String
+    let buttonLabel: String
+    let action: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "lock.fill").foregroundColor(.orange).font(.system(size: 12))
+            Text(message)
+                .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.7))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            Button(buttonLabel, action: action)
+                .font(.system(size: 11, weight: .semibold)).foregroundColor(.orange)
+                .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(Color.orange.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.orange.opacity(0.2), lineWidth: 1))
     }
 }
 

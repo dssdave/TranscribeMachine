@@ -5,12 +5,19 @@ struct TranscribeMachineApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .frame(minWidth: 700, minHeight: 580)
+                .frame(minWidth: 480, minHeight: 400)
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(replacing: .appInfo) {
+                Button("About TranscribeMachine") {
+                    NSApp.orderFrontStandardAboutPanel(options: [
+                        .applicationVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+                    ])
+                }
+            }
         }
     }
 }

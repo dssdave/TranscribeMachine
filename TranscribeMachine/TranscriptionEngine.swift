@@ -36,19 +36,26 @@ private actor WhisperActor {
     nonisolated(unsafe) var whisper: WhisperKit?
 
     func load() async throws {
-        // Preference order — best to most compatible
-        let preferred = [
-            "openai_whisper-large-v3-turbo",
-            "openai_whisper-large-v3_turbo",
-            "openai_whisper-large-v3",
-            "openai_whisper-large-v2",
-            "openai_whisper-medium.en",
-            "openai_whisper-small.en",
-        ]
+        let quality = UserDefaults.standard.string(forKey: "whisperModelQuality") ?? "fast"
 
-        
+        let preferred: [String]
+        switch quality {
+        case "quality":
+            preferred = [
+                "openai_whisper-large-v3-turbo",
+                "openai_whisper-large-v3_turbo",
+                "openai_whisper-large-v3",
+                "openai_whisper-medium.en",
+                "openai_whisper-small.en",
+            ]
+        case "balanced":
+            preferred = ["openai_whisper-medium.en", "openai_whisper-small.en"]
+        default: // "fast"
+            preferred = ["openai_whisper-small.en", "openai_whisper-base.en"]
+        }
 
-        let model = preferred.first ?? "openai_whisper-small.en"
+        let local = WhisperKit.listLocalModels()
+        let model = preferred.first { local.contains($0) } ?? preferred.last!
 
         let config = WhisperKitConfig(model: model, verbose: false, logLevel: .none)
         whisper = try await WhisperKit(config)
@@ -82,7 +89,13 @@ class TranscriptionEngine: ObservableObject {
     private let whisperActor = WhisperActor()
     private var micBuffer: [Float] = []
     private var systemBuffer: [Float] = []
-    private let chunkSamples = Int(8.0 * 16000.0)
+    private var chunkSamples: Int {
+        switch UserDefaults.standard.string(forKey: "whisperModelQuality") ?? "fast" {
+        case "quality":   return Int(30.0 * 16000.0)  // 30s — infrequent, yields to system
+        case "balanced":  return Int(15.0 * 16000.0)  // 15s
+        default:          return Int(8.0  * 16000.0)  // 8s — fast model, fine to run often
+        }
+    }
     private var isMicTranscribing = false
     private var isSystemTranscribing = false
 
@@ -145,7 +158,7 @@ class TranscriptionEngine: ObservableObject {
         if speaker == .local { isMicTranscribing = true }
         else { isSystemTranscribing = true }
 
-        Task {
+        Task(priority: .background) {
             defer {
                 Task { @MainActor in
                     if speaker == .local { self.isMicTranscribing = false }

@@ -188,22 +188,16 @@ class OllamaService: ObservableObject {
     // MARK: – Recap
 
     private func generateRecap(transcript: String, options: AIOptions, custom: String, context: String) async -> AIResult {
-        var prompt = """
+        let prompt = """
         \(context)Summarize this transcript in 3 to 5 sentences. Only include what was actually said — do not add, infer, or guess.
         \(customBlock(custom))
         Transcript:
         \(transcript)
+        \(formatRule)
         """
 
-        if options.includeActionItems {
-            prompt += "\n\n" + actionItemInstruction(owners: options.includeOwners, deadlines: options.includeDeadlines)
-        }
-
-        prompt += formatRule
-
         let raw = await generate(prompt: prompt)
-        let clean = stripMarkdown(raw)
-        return AIResult(main: clean, actionItems: options.includeActionItems ? parseActionItems(from: clean) : [])
+        return AIResult(main: stripMarkdown(raw), actionItems: [])
     }
 
     // MARK: – Decisions
@@ -293,8 +287,10 @@ class OllamaService: ObservableObject {
         switch source {
         case "Zoom call", "Microsoft Teams call", "FaceTime call", "Webex call":
             return "Context: This is a \(source) — may have two or more live participants.\n"
-        case "browser audio":
-            return "Context: This is a one-way presentation or monologue from a browser (YouTube, podcast, video). One person is speaking to an audience — there are no live participants, no agreements, and no one assigning tasks. Do NOT output any action items. Output \"None\" for any decisions section. Only summarize what the speaker discussed.\n"
+        case "meeting":
+            return "Context: This is a meeting or conversation with two or more live participants.\n"
+        case "browser audio", "Talk / Media":
+            return "Context: This is a one-way presentation, talk, podcast, comedy show, or recorded media. One person is speaking to an audience — there are no live participants, no agreements, and no one assigning tasks. Do NOT output any action items. Output \"None\" for any decisions section. Only summarize what the speaker discussed.\n"
         case "Discord":
             return "Context: Audio from Discord.\n"
         case "Loom recording":

@@ -10,6 +10,8 @@ class AudioFileRecorder: ObservableObject {
     @Published var micActive = false
     @Published var systemActive = false
     @Published var detectedAudioSource: String = ""
+    @Published var micPermissionDenied = false
+    @Published var screenRecordingPermissionDenied = false
 
     var isRecording: Bool { micActive || systemActive }
 
@@ -20,7 +22,9 @@ class AudioFileRecorder: ObservableObject {
 
     // Available mic devices
     @Published var availableMics: [AVCaptureDevice] = []
-    @Published var selectedMicID: String = ""   // uniqueID of chosen device
+    @Published var selectedMicID: String = "" {
+        didSet { UserDefaults.standard.set(selectedMicID, forKey: "selectedMicID") }
+    }
 
     // AVCaptureSession-based mic (replaces AVAudioEngine which crashes on macOS 15+)
     private var captureSession: AVCaptureSession?
@@ -44,7 +48,10 @@ class AudioFileRecorder: ObservableObject {
             position: .unspecified
         )
         availableMics = discovery.devices
-        if !availableMics.contains(where: { $0.uniqueID == selectedMicID }) {
+        let saved = UserDefaults.standard.string(forKey: "selectedMicID") ?? ""
+        if availableMics.contains(where: { $0.uniqueID == saved }) {
+            selectedMicID = saved
+        } else if !availableMics.contains(where: { $0.uniqueID == selectedMicID }) {
             selectedMicID = AVCaptureDevice.default(for: .audio)?.uniqueID ?? ""
         }
     }
@@ -57,8 +64,11 @@ class AudioFileRecorder: ObservableObject {
 
     private func startMic() {
         AVAudioApplication.requestRecordPermission { [weak self] granted in
-            guard granted else { print("Mic permission denied"); return }
-            Task { @MainActor [weak self] in self?.buildMicSession() }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if granted { self.buildMicSession() }
+                else { self.micPermissionDenied = true }
+            }
         }
     }
 
@@ -155,6 +165,12 @@ class AudioFileRecorder: ObservableObject {
             self.scStream = stream
             self.systemActive = true
         } catch {
+            let msg = error.localizedDescription.lowercased()
+            if msg.contains("permission") || msg.contains("denied") || msg.contains("not authorized") {
+                screenRecordingPermissionDenied = true
+            } else {
+                screenRecordingPermissionDenied = true  // safe default — most failures are permission-related
+            }
             print("System audio start error: \(error)")
         }
     }
