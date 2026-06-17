@@ -37,28 +37,13 @@ private actor WhisperActor {
     nonisolated(unsafe) var loadedModel: String = ""
 
     func load() async throws {
-        let quality = UserDefaults.standard.string(forKey: "whisperModelQuality") ?? "fast"
-
-        let preferred: [String]
+        let quality = UserDefaults.standard.string(forKey: "whisperModelQuality") ?? "balanced"
+        let model: String
         switch quality {
-        case "quality":
-            preferred = [
-                "openai_whisper-large-v3-turbo",
-                "openai_whisper-large-v3_turbo",
-                "openai_whisper-large-v3",
-                "openai_whisper-medium.en",
-                "openai_whisper-small.en",
-            ]
-        case "balanced":
-            preferred = ["openai_whisper-medium.en", "openai_whisper-small.en"]
-        default: // "fast"
-            preferred = ["openai_whisper-small.en", "openai_whisper-base.en"]
+        case "quality":  model = "openai_whisper-large-v3-turbo"
+        case "balanced": model = "openai_whisper-small.en"
+        default:         model = "openai_whisper-base.en"
         }
-
-        let modelsDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml")
-        let local = (try? FileManager.default.contentsOfDirectory(atPath: modelsDir.path)) ?? []
-        let model = preferred.first { local.contains($0) } ?? preferred.last!
         let config = WhisperKitConfig(model: model, verbose: false, logLevel: .none)
         whisper = try await WhisperKit(config)
         loadedModel = model
