@@ -86,6 +86,16 @@ class AudioFileRecorder: ObservableObject {
         session.addInput(input)
 
         let output = AVCaptureAudioDataOutput()
+        // Request a known, simple format so asPCMBuffer() can use a fixed memcpy path.
+        output.audioSettings = [
+            AVFormatIDKey:                kAudioFormatLinearPCM,
+            AVLinearPCMBitDepthKey:       32,
+            AVLinearPCMIsFloatKey:        true,
+            AVLinearPCMIsBigEndianKey:    false,
+            AVLinearPCMIsNonInterleavedKey: true,
+            AVSampleRateKey:              44100.0,
+            AVNumberOfChannelsKey:        1
+        ]
         let fileURL = tempWAV("local")
         localFileURL = fileURL
 
@@ -259,31 +269,34 @@ class SCAudioOutput: NSObject, SCStreamOutput {
 }
 
 // MARK: – CMSampleBuffer → AVAudioPCMBuffer (float32, mono, 16kHz)
+// Assumes audioSettings was set to float32 non-interleaved mono 44100 Hz.
 
 extension CMSampleBuffer {
     func asPCMBuffer() -> AVAudioPCMBuffer? {
-        guard
-            let desc = CMSampleBufferGetFormatDescription(self),
-            let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(desc),
-            let srcFormat = AVAudioFormat(streamDescription: asbd)
+        let frameCount = AVAudioFrameCount(CMSampleBufferGetNumSamples(self))
+        guard frameCount > 0,
+              let blockBuffer = CMSampleBufferGetDataBuffer(self)
         else { return nil }
 
-        let frameCount = AVAudioFrameCount(CMSampleBufferGetNumSamples(self))
-        guard frameCount > 0 else { return nil }
+        var dataLen = 0
+        var rawPtr: UnsafeMutablePointer<CChar>?
+        guard CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil,
+                                          totalLengthOut: &dataLen, dataPointerOut: &rawPtr) == noErr,
+              let src = rawPtr
+        else { return nil }
 
-        guard let srcBuffer = AVAudioPCMBuffer(pcmFormat: srcFormat, frameCapacity: frameCount) else { return nil }
+        // Build a source buffer in the known format (matches audioSettings above).
+        let srcFormat = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1)!
+        guard let srcBuffer = AVAudioPCMBuffer(pcmFormat: srcFormat, frameCapacity: frameCount),
+              let floatDst  = srcBuffer.floatChannelData
+        else { return nil }
         srcBuffer.frameLength = frameCount
+        memcpy(floatDst[0], src, min(dataLen, Int(frameCount) * 4))
 
-        // CMSampleBufferCopyPCMDataIntoAudioBufferList handles any PCM layout
-        // (interleaved or non-interleaved, int16 or float) without fragile memcpy.
-        let status = CMSampleBufferCopyPCMDataIntoAudioBufferList(
-            self, at: 0, frameCount: Int32(frameCount), into: srcBuffer.mutableAudioBufferList
-        )
-        guard status == noErr else { return nil }
-
-        let dstFormat = AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1)!
-        let dstFrameCount = AVAudioFrameCount(Double(frameCount) * 16000.0 / srcFormat.sampleRate + 1)
-        guard let dstBuffer  = AVAudioPCMBuffer(pcmFormat: dstFormat, frameCapacity: dstFrameCount),
+        // Downsample to 16 kHz for WhisperKit.
+        let dstFormat    = AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1)!
+        let dstFrameCount = AVAudioFrameCount(Double(frameCount) * 16000.0 / 44100.0 + 1)
+        guard let dstBuffer = AVAudioPCMBuffer(pcmFormat: dstFormat, frameCapacity: dstFrameCount),
               let converter  = AVAudioConverter(from: srcFormat, to: dstFormat)
         else { return nil }
 

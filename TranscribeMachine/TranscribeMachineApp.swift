@@ -5,7 +5,7 @@ struct TranscribeMachineApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .frame(minWidth: 400, maxWidth: 460, minHeight: 420)
+                .frame(width: 420, minHeight: 440)
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)

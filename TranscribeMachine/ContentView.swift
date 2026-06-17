@@ -136,7 +136,9 @@ struct ContentView: View {
                 Circle()
                     .fill(Color(red: 0.2, green: 0.9, blue: 0.5))
                     .frame(width: 6, height: 6)
-                Text("Ready")
+                Text(transcriber.loadedModel.isEmpty
+                     ? "Ready"
+                     : "Ready · \(transcriber.loadedModel.replacingOccurrences(of: "openai_whisper-", with: ""))")
                     .font(.system(size: 11))
                     .foregroundColor(Color.white.opacity(0.4))
             }
@@ -534,7 +536,7 @@ struct ContentView: View {
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
-                    Text("Fast: small model, ~8s updates. Balanced: ~15s. Quality: large model, ~30s — best accuracy. Takes effect on next launch.")
+                    Text("Fast: ~8s updates. Balanced: ~10s. Quality: ~15s, largest model. Takes effect on next launch.")
                         .font(.system(size: 10)).foregroundColor(Color.white.opacity(0.3))
                 }
 

@@ -34,6 +34,7 @@ struct TranscriptSegment: Identifiable {
 // Actor isolates WhisperKit to avoid Swift 6 sendability errors
 private actor WhisperActor {
     nonisolated(unsafe) var whisper: WhisperKit?
+    nonisolated(unsafe) var loadedModel: String = ""
 
     func load() async throws {
         let quality = UserDefaults.standard.string(forKey: "whisperModelQuality") ?? "fast"
@@ -56,9 +57,9 @@ private actor WhisperActor {
 
         let local = WhisperKit.listLocalModels()
         let model = preferred.first { local.contains($0) } ?? preferred.last!
-
         let config = WhisperKitConfig(model: model, verbose: false, logLevel: .none)
         whisper = try await WhisperKit(config)
+        loadedModel = model
     }
 
     func transcribe(audioArray: [Float]) async throws -> [TranscriptionResult]? {
@@ -74,6 +75,7 @@ class TranscriptionEngine: ObservableObject {
     @Published var downloadProgress: Double = 0
     @Published var modelStatus: String = "Not downloaded"
     @Published var lastActivityDate: Date?
+    @Published var loadedModel: String = ""
 
     func resetActivity()  { lastActivityDate = nil }
     func extendActivity() { lastActivityDate = Date() }
@@ -91,9 +93,9 @@ class TranscriptionEngine: ObservableObject {
     private var systemBuffer: [Float] = []
     private var chunkSamples: Int {
         switch UserDefaults.standard.string(forKey: "whisperModelQuality") ?? "fast" {
-        case "quality":   return Int(30.0 * 16000.0)  // 30s — infrequent, yields to system
-        case "balanced":  return Int(15.0 * 16000.0)  // 15s
-        default:          return Int(8.0  * 16000.0)  // 8s — fast model, fine to run often
+        case "quality":   return Int(15.0 * 16000.0)  // 15s
+        case "balanced":  return Int(10.0 * 16000.0)  // 10s
+        default:          return Int(8.0  * 16000.0)  // 8s
         }
     }
     private var isMicTranscribing = false
@@ -112,6 +114,7 @@ class TranscriptionEngine: ObservableObject {
                 modelReady = true
                 isDownloading = false
                 modelStatus = "Ready"
+                loadedModel = whisperActor.loadedModel
             } catch {
                 isDownloading = false
                 modelStatus = "Download failed"
@@ -158,7 +161,7 @@ class TranscriptionEngine: ObservableObject {
         if speaker == .local { isMicTranscribing = true }
         else { isSystemTranscribing = true }
 
-        Task(priority: .background) {
+        Task(priority: .userInitiated) {
             defer {
                 Task { @MainActor in
                     if speaker == .local { self.isMicTranscribing = false }
