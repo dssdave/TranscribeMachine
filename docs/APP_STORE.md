@@ -57,15 +57,15 @@ transcribe,meeting,recorder,transcription,whisper,AI,local,offline,privacy,summa
 
 ## Support URL
 
-https://github.com/dssdave/TranscribeMachine/blob/main/docs/SUPPORT.md
+https://1hsaved.com/transcribemachine/privacy
 
 ## Marketing URL (optional)
 
-https://github.com/dssdave/TranscribeMachine
+https://1hsaved.com/transcribemachine
 
 ## Privacy Policy URL
 
-https://raw.githubusercontent.com/dssdave/TranscribeMachine/main/docs/PRIVACY.md
+https://1hsaved.com/transcribemachine/privacy
 
 ---
 

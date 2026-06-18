@@ -606,10 +606,10 @@ struct ContentView: View {
                     .foregroundColor(Color.white.opacity(0.2))
                 HStack(spacing: 16) {
                     Button("Privacy Policy") {
-                        NSWorkspace.shared.open(URL(string: "https://dssdave.github.io/TranscribeMachine/PRIVACY")!)
+                        NSWorkspace.shared.open(URL(string: "https://1hsaved.com/transcribemachine/privacy")!)
                     }
                     Button("Terms of Use") {
-                        NSWorkspace.shared.open(URL(string: "https://dssdave.github.io/TranscribeMachine/TERMS")!)
+                        NSWorkspace.shared.open(URL(string: "https://1hsaved.com/transcribemachine/terms")!)
                     }
                 }
                 .font(.system(size: 10))
