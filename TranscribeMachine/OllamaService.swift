@@ -190,11 +190,18 @@ class OllamaService: ObservableObject {
     private func generateRecap(transcript: String, options: AIOptions, custom: String, context: String) async -> AIResult {
         let cleanedTranscript = stripSpeakerLabels(transcript)
         let prompt = """
-        \(context)Summarize the following in 4 to 6 sentences. Capture the key ideas and any specific examples or numbers mentioned. Only include what was actually said — do not add, infer, or guess.
+        \(context)List every key point from this transcript. Use one short line per point, starting with a dash (-).
+
+        Rules:
+        - Only include things that were actually said. Do not add, infer, or interpret.
+        - Include specific numbers, examples, and comparisons exactly as stated.
+        - Do not write an intro sentence or conclusion — just the list.
+        - If a point was repeated, list it once.
         \(customBlock(custom))
         Transcript:
         \(cleanedTranscript)
-        \(formatRule)
+
+        IMPORTANT: Plain text only. No asterisks, no pound signs. Each point on its own line starting with -.
         """
 
         let raw = await generate(prompt: prompt)
@@ -332,7 +339,7 @@ class OllamaService: ObservableObject {
         guard let url = URL(string: "\(baseURL)/api/generate") else { return "Error: bad URL" }
         let body: [String: Any] = [
             "model": kModel, "prompt": prompt, "stream": false,
-            "options": ["temperature": 0.1, "num_predict": 900]
+            "options": ["temperature": 0.1, "num_predict": 1200]
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: body) else { return "Error: encoding" }
         var req = URLRequest(url: url)
