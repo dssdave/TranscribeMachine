@@ -40,7 +40,7 @@ private actor WhisperActor {
         let quality = UserDefaults.standard.string(forKey: "whisperModelQuality") ?? "balanced"
         let model: String
         switch quality {
-        case "quality":  model = "openai_whisper-large-v3-turbo"
+        case "quality":  model = "openai_whisper-medium.en"
         case "balanced": model = "openai_whisper-small.en"
         default:         model = "openai_whisper-base.en"
         }

@@ -142,9 +142,7 @@ struct ContentView: View {
                 Circle()
                     .fill(Color(red: 0.2, green: 0.9, blue: 0.5))
                     .frame(width: 6, height: 6)
-                Text(transcriber.loadedModel.isEmpty
-                     ? "Ready"
-                     : "Ready · \(transcriber.loadedModel.replacingOccurrences(of: "openai_whisper-", with: ""))")
+                Text("Ready · \(qualityLabel)")
                     .font(.system(size: 11))
                     .foregroundColor(Color.white.opacity(0.4))
             }
@@ -158,6 +156,14 @@ struct ContentView: View {
         if ollama.state == .downloading { return "Setting up…" }
         if ollama.state == .starting    { return "Starting…" }
         return ""
+    }
+
+    private var qualityLabel: String {
+        switch whisperModelQuality {
+        case "quality":  return "Quality"
+        case "balanced": return "Balanced"
+        default:         return "Fast"
+        }
     }
 
     var setupBanner: some View {
@@ -531,7 +537,7 @@ struct ContentView: View {
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
-                        Text("Changes apply immediately. Fast uses the smallest model; Quality the largest.")
+                        Text("Fast: smallest, quickest. Balanced: small model. Quality: medium model, most accurate.")
                             .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
                             .fixedSize(horizontal: false, vertical: true)
                     }
