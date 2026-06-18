@@ -1,60 +1,56 @@
 # TranscribeMachine
 
-Local AI meeting transcriber for macOS. Everything runs on your machine — no cloud, no subscriptions.
-
-**Stack:** SwiftUI · WhisperKit (Whisper base.en) · Ollama (llama3.2) · ScreenCaptureKit
+Local AI transcription for macOS. Everything runs on your device — no cloud, no subscription, no data sent anywhere.
 
 ---
 
-## Features
+## What it does
 
-- One-click microphone transcription
-- System audio capture (Zoom, Meet, Teams, any app)
+- Real-time microphone transcription
+- System audio capture (Zoom, Meet, Teams, browser, any app)
 - Both simultaneously
-- Auto-downloads Whisper model on first launch (~150MB)
-- AI summarize or email draft via local Ollama
-- Copy to clipboard
+- AI-powered Recap, Decisions, Next Steps, and Email from your transcript
+- Customisable AI prompts per action
+- Export to plain text
+
+All speech recognition runs via [WhisperKit](https://github.com/argmaxinc/WhisperKit) on Apple's CoreML/Neural Engine. All AI analysis runs via [Ollama](https://ollama.com) locally. Nothing leaves your Mac.
 
 ---
 
 ## Requirements
 
-- macOS 14+ (Sonoma)
-- Xcode 15+
-- [Ollama](https://ollama.com) for AI features (optional)
+- macOS 14 Sonoma or later
+- Xcode 15+ (to build from source)
+- ~1GB free disk space (for model downloads on first launch)
 
 ---
 
-## Setup
-
-### 1. Clone and open
+## Build & run
 
 ```bash
 gh repo clone dssdave/TranscribeMachine
 cd TranscribeMachine
-open Package.swift  # opens in Xcode
+open TranscribeMachine.xcodeproj
 ```
 
-### 2. Xcode config
+In Xcode:
+1. Set your Team in Signing & Capabilities
+2. Select **My Mac** as the run destination
+3. Hit ⌘R
 
-- Set your Team in Signing & Capabilities
-- Make sure entitlements file is linked
-- Build target: My Mac
+On first launch the app downloads the Whisper model and Ollama binary automatically. Grant Microphone and Screen Recording permissions when prompted.
 
-### 3. Install Ollama (for AI features)
+---
 
-```bash
-# Install from https://ollama.com, then:
-ollama pull llama3.2
-```
+## Transcription quality tiers
 
-### 4. Run
+| Tier | Model | Size | Notes |
+|------|-------|------|-------|
+| Fast | whisper-base.en | ~74 MB | Quickest, lowest accuracy |
+| Balanced (default) | whisper-small.en | ~244 MB | Good accuracy, reasonable speed |
+| Quality | whisper-medium.en | ~769 MB | Best accuracy, slower |
 
-Hit ⌘R in Xcode. On first launch, WhisperKit downloads the Whisper model automatically.
-
-**Grant permissions when prompted:**
-- Microphone
-- Screen Recording (for system audio)
+Models are downloaded once and cached. Switch tiers in Settings — the model reloads immediately.
 
 ---
 
@@ -62,34 +58,45 @@ Hit ⌘R in Xcode. On first launch, WhisperKit downloads the Whisper model autom
 
 ```
 TranscribeMachine/
-├── Package.swift               # WhisperKit dependency
-├── TranscribeMachine/
-│   ├── TranscribeMachineApp.swift   # App entry
-│   ├── ContentView.swift            # UI
-│   ├── AudioRecorder.swift          # Mic + ScreenCaptureKit
-│   ├── TranscriptionEngine.swift    # WhisperKit pipeline
-│   ├── OllamaService.swift          # Local AI (summarize/email)
-│   ├── Info.plist
-│   └── TranscribeMachine.entitlements
+├── TranscribeMachineApp.swift      # App entry, window sizing
+├── ContentView.swift               # Full UI
+├── AudioFileRecorder.swift         # Mic (AVCaptureSession) + system audio (ScreenCaptureKit)
+├── TranscriptionEngine.swift       # WhisperKit pipeline, silence gate, chunk processing
+├── OllamaService.swift             # Local AI: setup, model pull, prompt execution
+├── WhisperXRunner.swift            # Optional speaker diarization via WhisperX (Python)
+└── Info.plist                      # Permissions, version
 ```
+
+**Audio pipeline:**
+`AVCaptureAudioDataOutput` → `CMSampleBuffer` → `AVAudioPCMBuffer` (float32, 16kHz) → WhisperKit → transcript segments
+
+**AI pipeline:**
+Transcript → Ollama HTTP API (localhost:11434) → llama3.2:3b → formatted output
 
 ---
 
-## Create GitHub Repo
+## Settings
 
-```bash
-cd TranscribeMachine
-git init
-git add .
-git commit -m "Initial commit: TranscribeMachine v1.0"
-gh repo create dssdave/TranscribeMachine --public --source=. --push
-```
+| Setting | Options | Default |
+|---------|---------|---------|
+| Microphone | Available input devices | System default |
+| Transcription Quality | Fast / Balanced / Quality | Balanced |
+| Auto-Stop | Off / 5 / 10 / 15 / 30 min | Off |
+| AI Prompts | Editable per action | Built-in defaults |
 
 ---
 
-## Notes
+## Docs
 
-- WhisperKit uses Apple's CoreML — fast on M1/M2/M3, works on Intel
-- System audio capture requires Screen Recording permission in System Settings → Privacy
-- Ollama runs at `localhost:11434` — app auto-detects and shows setup instructions if missing
-- The app gracefully degrades: transcription works without Ollama, AI features prompt install
+- [Privacy Policy](docs/PRIVACY.md)
+- [Terms of Use](docs/TERMS.md)
+- [Support](docs/SUPPORT.md)
+- [App Store Metadata](docs/APP_STORE.md)
+
+---
+
+## License
+
+Source available for personal use. See [Terms of Use](docs/TERMS.md).
+
+Third-party components retain their own licenses: WhisperKit (Apache 2.0), Ollama (MIT), Llama 3.2 (Meta Llama 3.2 Community License).
