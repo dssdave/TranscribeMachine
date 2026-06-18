@@ -28,9 +28,14 @@ struct ContentView: View {
     @State private var customInstructions = ""
 
     @AppStorage("silenceTimeoutMinutes") private var silenceTimeoutMinutes: Int = 10
-    @AppStorage("whisperModelQuality") private var whisperModelQuality: String = "balanced"
+    @AppStorage("whisperModelQuality")   private var whisperModelQuality: String = "balanced"
+    @AppStorage("promptRecap")      private var promptRecap:      String = OllamaService.defaultPromptRecap
+    @AppStorage("promptDecisions")  private var promptDecisions:  String = OllamaService.defaultPromptDecisions
+    @AppStorage("promptNextSteps")  private var promptNextSteps:  String = OllamaService.defaultPromptNextSteps
+    @AppStorage("promptEmail")      private var promptEmail:      String = OllamaService.defaultPromptEmail
 
     @State private var showSettings = false
+    @State private var selectedPromptTab: Int = 0
     @State private var diarizedSegments: [DiarizedSegment] = []
     @State private var speakerNames: [String: String] = [:]
     @State private var renamingKey: String?
@@ -558,6 +563,36 @@ struct ContentView: View {
                             .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
                             .fixedSize(horizontal: false, vertical: true)
                     }
+
+                    Divider().background(Color.white.opacity(0.06)).padding(.horizontal, 22)
+
+                    settingsRow("AI Prompts") {
+                        Picker("", selection: $selectedPromptTab) {
+                            Text("Recap").tag(0)
+                            Text("Decisions").tag(1)
+                            Text("Next Steps").tag(2)
+                            Text("Email").tag(3)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+
+                        TextEditor(text: currentPromptBinding)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(Color.white.opacity(0.8))
+                            .frame(height: 160)
+                            .scrollContentBackground(.hidden)
+                            .background(Color.white.opacity(0.05))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.08), lineWidth: 1))
+
+                        HStack {
+                            Spacer()
+                            Button("Reset to default") { resetCurrentPrompt() }
+                                .font(.system(size: 11))
+                                .foregroundColor(Color.white.opacity(0.35))
+                                .buttonStyle(.plain)
+                        }
+                    }
                 }
                 .padding(.vertical, 4)
             }
@@ -573,6 +608,24 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(red: 0.06, green: 0.06, blue: 0.08).ignoresSafeArea())
         .onAppear { recorder.refreshMicList() }
+    }
+
+    private var currentPromptBinding: Binding<String> {
+        switch selectedPromptTab {
+        case 1:  return $promptDecisions
+        case 2:  return $promptNextSteps
+        case 3:  return $promptEmail
+        default: return $promptRecap
+        }
+    }
+
+    private func resetCurrentPrompt() {
+        switch selectedPromptTab {
+        case 1:  promptDecisions = OllamaService.defaultPromptDecisions
+        case 2:  promptNextSteps = OllamaService.defaultPromptNextSteps
+        case 3:  promptEmail     = OllamaService.defaultPromptEmail
+        default: promptRecap     = OllamaService.defaultPromptRecap
+        }
     }
 
     private func settingsRow<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {

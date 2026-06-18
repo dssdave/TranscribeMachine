@@ -4,6 +4,47 @@ import SwiftUI
 // The one model we've chosen. Users never see this name.
 private let kModel = "llama3.2:3b"
 
+// Default prompts — also used as fallback when user hasn't customised
+extension OllamaService {
+    static let defaultPromptRecap = """
+    List every key point from this transcript. Use one short line per point, starting with a dash (-).
+
+    Rules:
+    - Only include things that were actually said. Do not add, infer, or interpret.
+    - Include specific numbers, examples, and comparisons exactly as stated.
+    - Do not write an intro sentence or conclusion — just the list.
+    - If a point was repeated, list it once.
+    """
+
+    static let defaultPromptDecisions = """
+    Read the transcript and list only decisions that were explicitly agreed on.
+
+    A decision requires clear agreement language: "we decided", "we agreed", "we will", "let's go with".
+    Opinions, suggestions, and statements of fact are NOT decisions.
+    Do NOT invent or interpret — only include something if the exact words in the transcript make it clear.
+    If nothing qualifies, output only: None
+    """
+
+    static let defaultPromptNextSteps = """
+    Read the transcript and list only real personal commitments — tasks someone promised to do.
+
+    Rules:
+    - Only count "I will" or "I'll" when it is a genuine personal promise to complete a task.
+    - Do NOT count: hypothetical scenarios, the speaker describing their presentation, general advice, or past actions.
+    - Do NOT infer, extrapolate, or add deadlines not spoken.
+    - If there are no genuine commitments, output only: None
+    """
+
+    static let defaultPromptEmail = """
+    Write a professional follow-up email based on this transcript.
+    The sender is "You" in the transcript. Use [Your Name] for the sign-off.
+
+    Include: subject line, brief recap of what was discussed, key decisions if any were made.
+    Only include action items if someone explicitly said they will do something.
+    Do not add information that is not in the transcript.
+    """
+}
+
 struct AIOptions {
     var includeActionItems: Bool = true
     var includeOwners: Bool = true
@@ -188,22 +229,16 @@ class OllamaService: ObservableObject {
     // MARK: – Recap
 
     private func generateRecap(transcript: String, options: AIOptions, custom: String, context: String) async -> AIResult {
+        let instruction = UserDefaults.standard.string(forKey: "promptRecap") ?? Self.defaultPromptRecap
         let cleanedTranscript = stripSpeakerLabels(transcript)
         let prompt = """
-        \(context)List every key point from this transcript. Use one short line per point, starting with a dash (-).
-
-        Rules:
-        - Only include things that were actually said. Do not add, infer, or interpret.
-        - Include specific numbers, examples, and comparisons exactly as stated.
-        - Do not write an intro sentence or conclusion — just the list.
-        - If a point was repeated, list it once.
+        \(context)\(instruction)
         \(customBlock(custom))
         Transcript:
         \(cleanedTranscript)
 
         IMPORTANT: Plain text only. No asterisks, no pound signs. Each point on its own line starting with -.
         """
-
         let raw = await generate(prompt: prompt)
         return AIResult(main: stripMarkdown(raw), actionItems: [])
     }
@@ -217,19 +252,14 @@ class OllamaService: ObservableObject {
     // MARK: – Decisions
 
     private func generateDecisions(transcript: String, custom: String, context: String) async -> AIResult {
+        let instruction = UserDefaults.standard.string(forKey: "promptDecisions") ?? Self.defaultPromptDecisions
         let prompt = """
-        \(context)Read the transcript and list only decisions that were explicitly agreed on.
-
-        A decision requires clear agreement language: "we decided", "we agreed", "we will", "let's go with".
-        Opinions, suggestions, and statements of fact are NOT decisions.
-        Do NOT invent or interpret — only include something if the exact words in the transcript make it clear.
-        If nothing qualifies, output only: None
-        \(customBlock(custom))\(formatRule)
-
+        \(context)\(instruction)
+        \(customBlock(custom))
         Transcript:
         \(transcript)
+        \(formatRule)
         """
-
         let raw = await generate(prompt: prompt)
         return AIResult(main: stripMarkdown(raw), actionItems: [])
     }
@@ -237,22 +267,15 @@ class OllamaService: ObservableObject {
     // MARK: – Next Steps
 
     private func generateNextSteps(transcript: String, options: AIOptions, custom: String, context: String) async -> AIResult {
+        let instruction = UserDefaults.standard.string(forKey: "promptNextSteps") ?? Self.defaultPromptNextSteps
         var prompt = """
-        \(context)Read the transcript and list only real personal commitments — tasks someone promised to do.
-
-        Strict rules:
-        - Only count "I will" or "I'll" when it is a genuine personal promise to complete a task
-        - Do NOT count: hypothetical scenarios ("if you lose your job, you'll..."), the speaker describing their own presentation ("I'll show you...", "I'll flip back and forth"), general advice ("you should..."), or past actions
-        - Do NOT infer, extrapolate, or add deadlines not spoken
-        - If there are no genuine commitments, output only: None
+        \(context)\(instruction)
         \(customBlock(custom))
         Transcript:
         \(transcript)
         """
-
         prompt += "\n\n" + actionItemInstruction(owners: options.includeOwners, deadlines: options.includeDeadlines)
         prompt += formatRule
-
         let raw = await generate(prompt: prompt)
         let clean = stripMarkdown(raw)
         return AIResult(main: clean, actionItems: parseActionItems(from: clean))
@@ -261,25 +284,18 @@ class OllamaService: ObservableObject {
     // MARK: – Email
 
     private func generateEmail(transcript: String, options: AIOptions, custom: String, context: String) async -> AIResult {
+        let instruction = UserDefaults.standard.string(forKey: "promptEmail") ?? Self.defaultPromptEmail
         var prompt = """
-        \(context)Write a professional follow-up email based on this transcript.
-        The sender is "You" in the transcript. Use [Your Name] for the sign-off.
-
-        Include: subject line, brief recap of what was discussed, key decisions if any were made.
-        Only include action items if someone explicitly said they will do something.
-        Do not add information that is not in the transcript.
+        \(context)\(instruction)
         \(customBlock(custom))
         Transcript:
         \(transcript)
         """
-
         if options.includeActionItems {
             prompt += "\n\n" + actionItemInstruction(owners: options.includeOwners, deadlines: options.includeDeadlines,
                                                      intro: "After the email, list any explicit commitments:")
         }
-
         prompt += formatRule
-
         let raw = await generate(prompt: prompt)
         let clean = stripMarkdown(raw)
         return AIResult(main: clean, actionItems: options.includeActionItems ? parseActionItems(from: clean) : [])
