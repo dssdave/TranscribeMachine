@@ -188,16 +188,23 @@ class OllamaService: ObservableObject {
     // MARK: – Recap
 
     private func generateRecap(transcript: String, options: AIOptions, custom: String, context: String) async -> AIResult {
+        let cleanedTranscript = stripSpeakerLabels(transcript)
         let prompt = """
-        \(context)Summarize this transcript in 3 to 5 sentences. Only include what was actually said — do not add, infer, or guess.
+        \(context)Summarize the following in 4 to 6 sentences. Capture the key ideas and any specific examples or numbers mentioned. Only include what was actually said — do not add, infer, or guess.
         \(customBlock(custom))
         Transcript:
-        \(transcript)
+        \(cleanedTranscript)
         \(formatRule)
         """
 
         let raw = await generate(prompt: prompt)
         return AIResult(main: stripMarkdown(raw), actionItems: [])
+    }
+
+    private func stripSpeakerLabels(_ transcript: String) -> String {
+        transcript.components(separatedBy: "\n").map { line in
+            line.replacingOccurrences(of: #"^\[.*?\]:\s*"#, with: "", options: .regularExpression)
+        }.joined(separator: "\n")
     }
 
     // MARK: – Decisions
@@ -325,7 +332,7 @@ class OllamaService: ObservableObject {
         guard let url = URL(string: "\(baseURL)/api/generate") else { return "Error: bad URL" }
         let body: [String: Any] = [
             "model": kModel, "prompt": prompt, "stream": false,
-            "options": ["temperature": 0.1, "num_predict": 600]
+            "options": ["temperature": 0.1, "num_predict": 900]
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: body) else { return "Error: encoding" }
         var req = URLRequest(url: url)
