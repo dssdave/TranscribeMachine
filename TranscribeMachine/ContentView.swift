@@ -600,10 +600,23 @@ struct ContentView: View {
             Spacer()
 
             Divider().background(Color.white.opacity(0.06))
-            Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")")
+            VStack(spacing: 6) {
+                Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")")
+                    .font(.system(size: 10))
+                    .foregroundColor(Color.white.opacity(0.2))
+                HStack(spacing: 16) {
+                    Button("Privacy Policy") {
+                        NSWorkspace.shared.open(URL(string: "https://dssdave.github.io/TranscribeMachine/PRIVACY")!)
+                    }
+                    Button("Terms of Use") {
+                        NSWorkspace.shared.open(URL(string: "https://dssdave.github.io/TranscribeMachine/TERMS")!)
+                    }
+                }
                 .font(.system(size: 10))
-                .foregroundColor(Color.white.opacity(0.2))
-                .padding(.vertical, 10)
+                .foregroundColor(Color.white.opacity(0.25))
+                .buttonStyle(.plain)
+            }
+            .padding(.vertical, 10)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(red: 0.06, green: 0.06, blue: 0.08).ignoresSafeArea())
