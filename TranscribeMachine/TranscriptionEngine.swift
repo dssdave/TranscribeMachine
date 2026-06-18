@@ -97,10 +97,26 @@ class TranscriptionEngine: ObservableObject {
         prepareModel()
     }
 
+    private static func modelName(for quality: String) -> String {
+        switch quality {
+        case "quality":  return "openai_whisper-medium.en"
+        case "balanced": return "openai_whisper-small.en"
+        default:         return "openai_whisper-base.en"
+        }
+    }
+
+    private static func isCached(_ modelName: String) -> Bool {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml/\(modelName)")
+        return FileManager.default.fileExists(atPath: dir.path)
+    }
+
     func prepareModel() {
         guard !isDownloading else { return }
         isDownloading = true
-        modelStatus = "Downloading…"
+        let quality = UserDefaults.standard.string(forKey: "whisperModelQuality") ?? "balanced"
+        let name = Self.modelName(for: quality)
+        modelStatus = Self.isCached(name) ? "Loading…" : "Downloading… (first time only)"
 
         Task {
             do {

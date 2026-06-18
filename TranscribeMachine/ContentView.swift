@@ -150,7 +150,7 @@ struct ContentView: View {
     }
 
     private var currentStatusLabel: String {
-        if transcriber.isDownloading    { return "Setting up…" }
+        if transcriber.isDownloading    { return transcriber.modelStatus }
         if whisperX.setupState == .installing { return "Setting up…" }
         if whisperX.isRunning           { return "Processing…" }
         if ollama.state == .downloading { return "Setting up…" }
