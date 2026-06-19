@@ -31,6 +31,9 @@ struct ContentView: View {
     @AppStorage("whisperModelQuality")     private var whisperModelQuality: String = "balanced"
     @AppStorage("transcriptionLanguage")   private var transcriptionLanguage: String = "en"
     @AppStorage("suppressRepetition")      private var suppressRepetition: Bool = true
+    @AppStorage("noiseGate")              private var noiseGate: String = "normal"
+    @AppStorage("chunkLengthSeconds")     private var chunkLengthSeconds: Int = 0
+    @AppStorage("strictConfidence")       private var strictConfidence: Bool = false
     @AppStorage("promptRecap")      private var promptRecap:      String = OllamaService.defaultPromptRecap
     @AppStorage("promptDecisions")  private var promptDecisions:  String = OllamaService.defaultPromptDecisions
     @AppStorage("promptNextSteps")  private var promptNextSteps:  String = OllamaService.defaultPromptNextSteps
@@ -576,6 +579,49 @@ struct ContentView: View {
                             .labelsHidden()
                             .toggleStyle(.switch)
                         Text("Filters repetitive or looping output. Recommended for noisy environments.")
+                            .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Divider().background(Color.white.opacity(0.06)).padding(.horizontal, 22)
+
+                    settingsRow("Noise Gate") {
+                        Picker("", selection: $noiseGate) {
+                            Text("Strict").tag("strict")
+                            Text("Normal").tag("normal")
+                            Text("Sensitive").tag("sensitive")
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        Text("Strict: only loud speech. Normal: balanced. Sensitive: quiet rooms, picks up more.")
+                            .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Divider().background(Color.white.opacity(0.06)).padding(.horizontal, 22)
+
+                    settingsRow("Update Frequency") {
+                        Picker("", selection: $chunkLengthSeconds) {
+                            Text("Auto").tag(0)
+                            Text("8s").tag(8)
+                            Text("10s").tag(10)
+                            Text("15s").tag(15)
+                            Text("20s").tag(20)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        Text("How often a new transcript line appears. Auto follows the quality setting.")
+                            .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Divider().background(Color.white.opacity(0.06)).padding(.horizontal, 22)
+
+                    settingsRow("Strict Confidence") {
+                        Toggle("", isOn: $strictConfidence)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                        Text("Only output text Whisper is confident about. Reduces errors but may miss some words.")
                             .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
                             .fixedSize(horizontal: false, vertical: true)
                     }

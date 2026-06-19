@@ -53,10 +53,13 @@ private actor WhisperActor {
         let langCode = UserDefaults.standard.string(forKey: "transcriptionLanguage") ?? "auto"
         let suppressRepetition = UserDefaults.standard.bool(forKey: "suppressRepetition")
 
+        let strictConfidence = UserDefaults.standard.bool(forKey: "strictConfidence")
+
         var options = DecodingOptions()
         options.language = langCode == "auto" ? nil : langCode
         options.skipSpecialTokens = true
         options.compressionRatioThreshold = suppressRepetition ? 1.8 : 2.4
+        options.logProbThreshold = strictConfidence ? -0.5 : -1.0
 
         return try await whisper?.transcribe(audioArray: audioArray, decodeOptions: options)
     }
@@ -87,10 +90,25 @@ class TranscriptionEngine: ObservableObject {
     private var micBuffer: [Float] = []
     private var systemBuffer: [Float] = []
     private var chunkSamples: Int {
-        switch UserDefaults.standard.string(forKey: "whisperModelQuality") ?? "fast" {
-        case "quality":   return Int(15.0 * 16000.0)  // 15s
-        case "balanced":  return Int(10.0 * 16000.0)  // 10s
-        default:          return Int(8.0  * 16000.0)  // 8s
+        let override = UserDefaults.standard.integer(forKey: "chunkLengthSeconds")
+        let seconds: Double
+        if override > 0 {
+            seconds = Double(override)
+        } else {
+            switch UserDefaults.standard.string(forKey: "whisperModelQuality") ?? "balanced" {
+            case "quality":  seconds = 15
+            case "balanced": seconds = 10
+            default:         seconds = 8
+            }
+        }
+        return Int(seconds * 16000.0)
+    }
+
+    private var silenceThreshold: Float {
+        switch UserDefaults.standard.string(forKey: "noiseGate") ?? "normal" {
+        case "strict":    return 0.02   // only loud, clear speech
+        case "sensitive": return 0.001  // picks up quiet speech
+        default:          return 0.005  // normal
         }
     }
     private var isMicTranscribing = false
@@ -164,9 +182,6 @@ class TranscriptionEngine: ObservableObject {
     }
 
     // MARK: – Transcribe
-
-    // RMS silence gate — skip chunks that are below this energy threshold
-    private let silenceThreshold: Float = 0.005
 
     private func isSilent(_ chunk: [Float]) -> Bool {
         let rms = sqrt(chunk.map { $0 * $0 }.reduce(0, +) / Float(chunk.count))
