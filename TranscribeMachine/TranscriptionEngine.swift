@@ -50,7 +50,15 @@ private actor WhisperActor {
     }
 
     func transcribe(audioArray: [Float]) async throws -> [TranscriptionResult]? {
-        try await whisper?.transcribe(audioArray: audioArray)
+        let langCode = UserDefaults.standard.string(forKey: "transcriptionLanguage") ?? "auto"
+        let suppressRepetition = UserDefaults.standard.bool(forKey: "suppressRepetition")
+
+        var options = DecodingOptions()
+        options.language = langCode == "auto" ? nil : langCode
+        options.skipSpecialTokens = true
+        options.compressionRatioThreshold = suppressRepetition ? 1.8 : 2.4
+
+        return try await whisper?.transcribe(audioArray: audioArray, decodeOptions: options)
     }
 }
 

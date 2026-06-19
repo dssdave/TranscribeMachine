@@ -27,8 +27,10 @@ struct ContentView: View {
     @State private var copiedAI = false
     @State private var customInstructions = ""
 
-    @AppStorage("silenceTimeoutMinutes") private var silenceTimeoutMinutes: Int = 10
-    @AppStorage("whisperModelQuality")   private var whisperModelQuality: String = "balanced"
+    @AppStorage("silenceTimeoutMinutes")   private var silenceTimeoutMinutes: Int = 10
+    @AppStorage("whisperModelQuality")     private var whisperModelQuality: String = "balanced"
+    @AppStorage("transcriptionLanguage")   private var transcriptionLanguage: String = "en"
+    @AppStorage("suppressRepetition")      private var suppressRepetition: Bool = true
     @AppStorage("promptRecap")      private var promptRecap:      String = OllamaService.defaultPromptRecap
     @AppStorage("promptDecisions")  private var promptDecisions:  String = OllamaService.defaultPromptDecisions
     @AppStorage("promptNextSteps")  private var promptNextSteps:  String = OllamaService.defaultPromptNextSteps
@@ -543,6 +545,37 @@ struct ContentView: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
                         Text("Fast: smallest, quickest. Balanced: small model. Quality: medium model, most accurate.")
+                            .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Divider().background(Color.white.opacity(0.06)).padding(.horizontal, 22)
+
+                    settingsRow("Language") {
+                        Picker("", selection: $transcriptionLanguage) {
+                            Text("Auto-detect").tag("auto")
+                            Text("English").tag("en")
+                            Text("French").tag("fr")
+                            Text("Spanish").tag("es")
+                            Text("Portuguese").tag("pt")
+                            Text("German").tag("de")
+                            Text("Italian").tag("it")
+                            Text("Japanese").tag("ja")
+                            Text("Chinese").tag("zh")
+                        }
+                        .labelsHidden()
+                        Text("Forcing a language improves accuracy. Auto-detect can misfire on short clips.")
+                            .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Divider().background(Color.white.opacity(0.06)).padding(.horizontal, 22)
+
+                    settingsRow("Reduce Repetition") {
+                        Toggle("", isOn: $suppressRepetition)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                        Text("Filters repetitive or looping output. Recommended for noisy environments.")
                             .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
                             .fixedSize(horizontal: false, vertical: true)
                     }
