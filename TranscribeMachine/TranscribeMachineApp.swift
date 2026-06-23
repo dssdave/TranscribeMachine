@@ -35,6 +35,13 @@ struct TranscribeMachineApp: App {
                     ])
                 }
             }
+            CommandGroup(after: .windowArrangement) {
+                Button("TranscribeMachine") {
+                    NSApp.windows.first?.makeKeyAndOrderFront(nil)
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+                .keyboardShortcut("0", modifiers: [.command])
+            }
         }
     }
 }

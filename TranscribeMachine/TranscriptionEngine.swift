@@ -72,6 +72,10 @@ class TranscriptionEngine: ObservableObject {
     @Published var isDownloading = false
     @Published var downloadProgress: Double = 0
     @Published var modelStatus: String = "Not downloaded"
+    @Published var needsDownloadConfirmation = false
+    @Published var pendingDownloadSizeMB: Int = 0
+    @Published var needsDownloadConfirmation = false
+    @Published var pendingDownloadSizeMB: Int = 0
     @Published var lastActivityDate: Date?
     @Published var loadedModel: String = ""
 
@@ -137,23 +141,56 @@ class TranscriptionEngine: ObservableObject {
         return FileManager.default.fileExists(atPath: dir.path)
     }
 
+    private static func modelSizeMB(for quality: String) -> Int {
+        switch quality {
+        case "quality":  return 465
+        case "balanced": return 120
+        default:         return 39
+        }
+    }
+
     func prepareModel() {
+        guard !isDownloading else { return }
+        let quality = UserDefaults.standard.string(forKey: "whisperModelQuality") ?? "balanced"
+        let name = Self.modelName(for: quality)
+        if !Self.isCached(name) {
+            pendingDownloadSizeMB = Self.modelSizeMB(for: quality)
+            needsDownloadConfirmation = true
+            return
+        }
+        startLoad()
+    }
+
+    func confirmDownload() {
+        needsDownloadConfirmation = false
+        startLoad()
+    }
+
+    func cancelDownload() {
+        needsDownloadConfirmation = false
+        modelStatus = "Not downloaded"
+    }
+
+    private func startLoad() {
         guard !isDownloading else { return }
         isDownloading = true
         let quality = UserDefaults.standard.string(forKey: "whisperModelQuality") ?? "balanced"
         let name = Self.modelName(for: quality)
         modelStatus = Self.isCached(name) ? "Loading…" : "Downloading… (first time only)"
-
         Task {
             do {
                 try await whisperActor.load()
-                modelReady = true
-                isDownloading = false
-                modelStatus = "Ready"
-                loadedModel = whisperActor.loadedModel
+                await MainActor.run {
+                    self.modelReady = true
+                    self.isDownloading = false
+                    self.modelStatus = "Ready"
+                    self.loadedModel = self.whisperActor.loadedModel
+                }
             } catch {
-                isDownloading = false
-                modelStatus = "Download failed"
+                await MainActor.run {
+                    self.isDownloading = false
+                    self.modelStatus = "Download failed"
+                }
                 print("WhisperKit error: \(error)")
             }
         }

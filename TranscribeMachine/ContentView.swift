@@ -108,6 +108,13 @@ struct ContentView: View {
             silenceTick += 1
             if silenceTick >= 10 { silenceTick = 0; checkSilenceTimeout() }
         }
+        .sheet(isPresented: $transcriber.needsDownloadConfirmation) {
+            DownloadConfirmSheet(
+                sizeMB: transcriber.pendingDownloadSizeMB,
+                onConfirm: { transcriber.confirmDownload() },
+                onCancel:  { transcriber.cancelDownload() }
+            )
+        }
     }
 
     // MARK: – Header
@@ -828,6 +835,36 @@ struct ContentView: View {
     }
 }
 
+
+struct DownloadConfirmSheet: View {
+    let sizeMB: Int
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.system(size: 44))
+                .foregroundColor(Color(red: 0.4, green: 0.6, blue: 1.0))
+            Text("Download AI Model")
+                .font(.system(size: 18, weight: .bold))
+            Text("TranscribeMachine needs to download a speech recognition model (\(sizeMB) MB) to work. This happens once and requires an internet connection.")
+                .font(.system(size: 13))
+                .multilineTextAlignment(.center)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 12) {
+                Button("Not Now", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("Download (\(sizeMB) MB)", action: onConfirm)
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(32)
+        .frame(width: 360)
+    }
+}
 // MARK: – Row Views
 
 struct DiarizedRow: View {
