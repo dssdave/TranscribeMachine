@@ -74,8 +74,6 @@ class TranscriptionEngine: ObservableObject {
     @Published var modelStatus: String = "Not downloaded"
     @Published var needsDownloadConfirmation = false
     @Published var pendingDownloadSizeMB: Int = 0
-    @Published var needsDownloadConfirmation = false
-    @Published var pendingDownloadSizeMB: Int = 0
     @Published var lastActivityDate: Date?
     @Published var loadedModel: String = ""
 
