@@ -134,9 +134,13 @@ class TranscriptionEngine: ObservableObject {
     }
 
     private static func isCached(_ modelName: String) -> Bool {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml/\(modelName)")
-        return FileManager.default.fileExists(atPath: dir.path)
+        // swift-transformers HubApi defaults to Documents/huggingface (same in MAS sandbox)
+        let fm = FileManager.default
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let modelDir = docs
+            .appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml")
+            .appendingPathComponent(modelName)
+        return fm.fileExists(atPath: modelDir.path)
     }
 
     private static func modelSizeMB(for quality: String) -> Int {
