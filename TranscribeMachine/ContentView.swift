@@ -27,7 +27,7 @@ struct ContentView: View {
     @State private var copiedAI = false
     @State private var customInstructions = ""
 
-    @AppStorage("silenceTimeoutMinutes")   private var silenceTimeoutMinutes: Int = 10
+    @AppStorage("silenceTimeoutMinutes")   private var silenceTimeoutMinutes: Int = 0
     @AppStorage("whisperModelQuality")     private var whisperModelQuality: String = "balanced"
     @AppStorage("transcriptionLanguage")   private var transcriptionLanguage: String = "en"
     @AppStorage("suppressRepetition")      private var suppressRepetition: Bool = true

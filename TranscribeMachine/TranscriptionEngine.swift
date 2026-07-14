@@ -116,6 +116,14 @@ class TranscriptionEngine: ObservableObject {
     private var isMicTranscribing = false
     private var isSystemTranscribing = false
 
+    // Chunks are transcribed independently, so a word spanning the cut between two
+    // chunks gets clipped in both. Keep the tail of each chunk in the buffer instead
+    // of discarding it, so the next chunk re-transcribes that audio with full context —
+    // dedupOverlap() then strips the words we already committed.
+    private let overlapSamples = 16000  // 1 second at 16kHz
+    private var lastMicText: String = ""
+    private var lastSystemText: String = ""
+
     // MARK: – Model
 
     func reloadModel() {
@@ -205,7 +213,7 @@ class TranscriptionEngine: ObservableObject {
         micBuffer.append(contentsOf: toFloatArray(buffer))
         if micBuffer.count >= chunkSamples && !isMicTranscribing {
             let chunk = Array(micBuffer.prefix(chunkSamples))
-            micBuffer.removeFirst(chunkSamples)
+            micBuffer.removeFirst(max(chunkSamples - overlapSamples, 1))
             transcribeChunk(chunk, speaker: .local)
         }
     }
@@ -215,7 +223,7 @@ class TranscriptionEngine: ObservableObject {
         systemBuffer.append(contentsOf: toFloatArray(buffer))
         if systemBuffer.count >= chunkSamples && !isSystemTranscribing {
             let chunk = Array(systemBuffer.prefix(chunkSamples))
-            systemBuffer.removeFirst(chunkSamples)
+            systemBuffer.removeFirst(max(chunkSamples - overlapSamples, 1))
             transcribeChunk(chunk, speaker: .remote)
         }
     }
@@ -250,14 +258,41 @@ class TranscriptionEngine: ObservableObject {
                 guard !text.isEmpty, text != "[BLANK_AUDIO]" else { return }
 
                 await MainActor.run {
+                    let previous = speaker == .local ? self.lastMicText : self.lastSystemText
+                    let merged = self.dedupOverlap(previousText: previous, newText: text)
+                    if speaker == .local { self.lastMicText = text } else { self.lastSystemText = text }
+                    guard !merged.isEmpty else { return }
                     self.segments.append(
-                        TranscriptSegment(speaker: speaker, text: text, timestamp: Date())
+                        TranscriptSegment(speaker: speaker, text: merged, timestamp: Date())
                     )
                 }
             } catch {
                 print("Transcription error (\(speaker.rawValue)): \(error)")
             }
         }
+    }
+
+    // Chunk n's last `overlapSamples` of audio reappears as the start of chunk n+1
+    // (see feedMic/feedSystem), so the words WhisperKit produces there get transcribed
+    // twice. Find the longest word-level suffix/prefix match and drop it from newText.
+    private func dedupOverlap(previousText: String, newText: String) -> String {
+        guard !previousText.isEmpty else { return newText }
+        let prevWords = previousText.split(separator: " ").map(String.init)
+        let newWords = newText.split(separator: " ").map(String.init)
+        guard !prevWords.isEmpty, !newWords.isEmpty else { return newText }
+
+        let maxCheck = min(prevWords.count, newWords.count, 12)
+        var bestOverlap = 0
+        for len in stride(from: maxCheck, through: 1, by: -1) {
+            let prevTail = prevWords.suffix(len).map { $0.lowercased() }
+            let newHead = newWords.prefix(len).map { $0.lowercased() }
+            if prevTail == newHead {
+                bestOverlap = len
+                break
+            }
+        }
+        guard bestOverlap > 0 else { return newText }
+        return newWords.dropFirst(bestOverlap).joined(separator: " ")
     }
 
     // MARK: – Helpers
@@ -271,5 +306,7 @@ class TranscriptionEngine: ObservableObject {
         segments = []
         micBuffer = []
         systemBuffer = []
+        lastMicText = ""
+        lastSystemText = ""
     }
 }

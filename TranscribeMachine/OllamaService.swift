@@ -136,10 +136,11 @@ class OllamaService: ObservableObject {
             return nil
         }
 
-        // Find the macOS CLI binary (ollama-darwin, not the .app zip)
+        // Ollama ships the macOS CLI as a tarball (ollama-darwin.tgz) containing the
+        // binary plus its required dylibs — not a standalone "ollama-darwin" binary.
         guard let asset = assets.first(where: {
                   let name = ($0["name"] as? String) ?? ""
-                  return name == "ollama-darwin"
+                  return name == "ollama-darwin.tgz"
               }),
               let downloadURLString = asset["browser_download_url"] as? String,
               let downloadURL = URL(string: downloadURLString)
@@ -148,25 +149,40 @@ class OllamaService: ObservableObject {
             return nil
         }
 
-        // Download with progress
         let destPath = managedBinaryPath
-        let destURL  = URL(fileURLWithPath: destPath)
-        try? FileManager.default.createDirectory(at: destURL.deletingLastPathComponent(),
-                                                  withIntermediateDirectories: true)
+        let binDir   = URL(fileURLWithPath: destPath).deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: binDir, withIntermediateDirectories: true)
 
         do {
             let (tmpURL, _) = try await URLSession.shared.download(from: downloadURL)
-            try? FileManager.default.removeItem(at: destURL)
-            try FileManager.default.moveItem(at: tmpURL, to: destURL)
-            // Make executable and clear macOS quarantine
+            guard extractTarball(at: tmpURL, to: binDir) else {
+                downloadProgress = ""
+                return nil
+            }
+            // Make the binary executable and clear macOS quarantine from everything extracted
+            // (the ollama binary needs its sibling dylibs to also be un-quarantined to load).
             try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: destPath)
-            removeQuarantine(destPath)
+            removeQuarantine(binDir.path)
             UserDefaults.standard.set(tagName, forKey: "ollamaBinaryVersion")
             downloadProgress = ""
             return destPath
         } catch {
             downloadProgress = ""
             return nil
+        }
+    }
+
+    // Extracts the ollama-darwin.tgz tarball (binary + dylibs) into `dir`.
+    private func extractTarball(at tarballURL: URL, to dir: URL) -> Bool {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+        p.arguments = ["-xzf", tarballURL.path, "-C", dir.path]
+        do {
+            try p.run()
+            p.waitUntilExit()
+            return p.terminationStatus == 0
+        } catch {
+            return false
         }
     }
 
@@ -188,24 +204,24 @@ class OllamaService: ObservableObject {
 
         // Newer version available — download it in the background (used on next launch)
         guard let assets = release["assets"] as? [[String: Any]],
-              let asset = assets.first(where: { ($0["name"] as? String) == "ollama-darwin" }),
+              let asset = assets.first(where: { ($0["name"] as? String) == "ollama-darwin.tgz" }),
               let urlString = asset["browser_download_url"] as? String,
               let url = URL(string: urlString)
         else { return }
 
-        let destURL = URL(fileURLWithPath: managedBinaryPath)
+        let binDir = URL(fileURLWithPath: managedBinaryPath).deletingLastPathComponent()
         guard let (tmpURL, _) = try? await URLSession.shared.download(from: url) else { return }
-        try? FileManager.default.removeItem(at: destURL)
-        guard (try? FileManager.default.moveItem(at: tmpURL, to: destURL)) != nil else { return }
+        guard extractTarball(at: tmpURL, to: binDir) else { return }
         try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: managedBinaryPath)
-        removeQuarantine(managedBinaryPath)
+        removeQuarantine(binDir.path)
         UserDefaults.standard.set(latestTag, forKey: "ollamaBinaryVersion")
     }
 
+    // path may be a file or a directory (-r covers both; xattr no-ops on files without it too).
     private func removeQuarantine(_ path: String) {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
-        p.arguments = ["-d", "com.apple.quarantine", path]
+        p.arguments = ["-dr", "com.apple.quarantine", path]
         try? p.run()
         p.waitUntilExit()
     }
