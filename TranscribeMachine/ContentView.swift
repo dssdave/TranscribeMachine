@@ -1,16 +1,107 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-private let speakerPalette: [Color] = [
-    Color(red: 0.40, green: 0.60, blue: 1.00),
-    Color(red: 0.80, green: 0.45, blue: 1.00),
-    Color(red: 0.30, green: 0.85, blue: 0.60),
-    Color(red: 1.00, green: 0.65, blue: 0.25),
-    Color(red: 1.00, green: 0.40, blue: 0.50),
-    Color(red: 0.25, green: 0.85, blue: 0.95),
-    Color(red: 0.95, green: 0.85, blue: 0.25),
-    Color(red: 0.70, green: 0.50, blue: 0.35),
-]
+// MARK: – Paper Theme
+
+extension Color {
+    init(hex: UInt32, alpha: Double = 1) {
+        self.init(
+            red: Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >> 8) & 0xFF) / 255,
+            blue: Double(hex & 0xFF) / 255,
+            opacity: alpha
+        )
+    }
+}
+
+struct PaperTheme {
+    let paper: Color
+    let titlebar: Color
+    let card: Color
+    let line: Color
+    let line2: Color
+    let hair: Color
+    let ink: Color
+    let ink2: Color
+    let muted: Color
+    let faint: Color
+    let accent: Color
+    let accentInk: Color
+    let accentTint: Color
+    let slate: Color
+    let slateTint: Color
+    let green: Color
+    let toggle: Color
+    let knob: Color
+    let ghost: Color
+
+    static func tokens(for scheme: ColorScheme) -> PaperTheme {
+        scheme == .dark ? .dark : .light
+    }
+
+    static let light = PaperTheme(
+        paper: Color(hex: 0xFAF8F3),
+        titlebar: Color(hex: 0xF1EDE4),
+        card: Color(hex: 0xFFFFFF),
+        line: Color(hex: 0xE7E1D4),
+        line2: Color(hex: 0xEDE8DC),
+        hair: Color(hex: 0xD8CFBB),
+        ink: Color(hex: 0x232019),
+        ink2: Color(hex: 0x33302A),
+        muted: Color(hex: 0x6B665C),
+        faint: Color(hex: 0x9A9384),
+        accent: Color(hex: 0xB0623F),
+        accentInk: Color(hex: 0xFFFFFF),
+        accentTint: Color(hex: 0xF3ECE6),
+        slate: Color(hex: 0x3F6785),
+        slateTint: Color(hex: 0xEAF0F4),
+        green: Color(hex: 0x4A9D63),
+        toggle: Color(hex: 0xE4DED0),
+        knob: Color(hex: 0xFFFFFF),
+        ghost: Color(hex: 0xFFFFFF)
+    )
+
+    static let dark = PaperTheme(
+        paper: Color(hex: 0x1A1712),
+        titlebar: Color(hex: 0x221E17),
+        card: Color(hex: 0x211D16),
+        line: Color(hex: 0xD8CFBB, alpha: 0.13),
+        line2: Color(hex: 0xD8CFBB, alpha: 0.10),
+        hair: Color(hex: 0xD8CFBB, alpha: 0.35),
+        ink: Color(hex: 0xEEE7D8),
+        ink2: Color(hex: 0xE4DDCE),
+        muted: Color(hex: 0xA69C88),
+        faint: Color(hex: 0x8F8674),
+        accent: Color(hex: 0xE0946B),
+        accentInk: Color(hex: 0x211A12),
+        accentTint: Color(hex: 0xE0946B, alpha: 0.16),
+        slate: Color(hex: 0x9DB8D0),
+        slateTint: Color(hex: 0x7FA0BE, alpha: 0.16),
+        green: Color(hex: 0x5FB87A),
+        toggle: Color(hex: 0xD8CFBB, alpha: 0.14),
+        knob: Color(hex: 0xD8CFBB),
+        ghost: Color.white.opacity(0.04)
+    )
+
+    static let recDot = Color(hex: 0xE0523F)
+    static let stopButton = Color(hex: 0xC24A34)
+}
+
+extension Font {
+    static func newsreader(_ size: CGFloat, weight: Font.Weight = .medium) -> Font {
+        .system(size: size, weight: weight, design: .serif)
+    }
+    static func newsreaderItalic(_ size: CGFloat, weight: Font.Weight = .medium) -> Font {
+        .system(size: size, weight: weight, design: .serif).italic()
+    }
+}
+
+private func speakerColor(_ idx: Int, theme: PaperTheme) -> Color {
+    let palette = [theme.slate, theme.accent, theme.green,
+                   Color(hex: 0x8B5FBF), Color(hex: 0xC9A227),
+                   Color(hex: 0x4A9DB0), Color(hex: 0xB05F8B)]
+    return palette[idx % palette.count]
+}
 
 struct ContentView: View {
 
@@ -34,6 +125,7 @@ struct ContentView: View {
     @AppStorage("noiseGate")              private var noiseGate: String = "normal"
     @AppStorage("chunkLengthSeconds")     private var chunkLengthSeconds: Int = 0
     @AppStorage("strictConfidence")       private var strictConfidence: Bool = false
+    @AppStorage("appearanceMode")         private var appearanceMode: String = "system"
     @AppStorage("promptRecap")      private var promptRecap:      String = OllamaService.defaultPromptRecap
     @AppStorage("promptDecisions")  private var promptDecisions:  String = OllamaService.defaultPromptDecisions
     @AppStorage("promptNextSteps")  private var promptNextSteps:  String = OllamaService.defaultPromptNextSteps
@@ -50,29 +142,72 @@ struct ContentView: View {
     @State private var silenceWarningActive = false
     @State private var silenceTick = 0
 
+    @Environment(\.colorScheme) private var systemColorScheme
+
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     private var showingDiarized: Bool { !diarizedSegments.isEmpty }
     private var hasContent: Bool { !transcriber.segments.isEmpty || !diarizedSegments.isEmpty }
     private var isReady: Bool { transcriber.modelReady }
 
+    private var preferredScheme: ColorScheme? {
+        switch appearanceMode {
+        case "light": return .light
+        case "dark":  return .dark
+        default:      return nil
+        }
+    }
+
+    private var effectiveScheme: ColorScheme {
+        preferredScheme ?? systemColorScheme
+    }
+
+    private var theme: PaperTheme { PaperTheme.tokens(for: effectiveScheme) }
+
     var body: some View {
         ZStack {
-            Color(red: 0.06, green: 0.06, blue: 0.08).ignoresSafeArea()
+            theme.paper.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 header
-                Divider().background(Color.white.opacity(0.06))
+                Divider().background(theme.line)
                 ScrollView {
-                    VStack(spacing: 16) {
-                        recordButtons
+                    VStack(alignment: .leading, spacing: 22) {
+                        sourcesCard
+
+                        if recorder.micPermissionDenied {
+                            PermissionBanner(
+                                theme: theme,
+                                message: "Microphone access denied. Open System Settings → Privacy & Security → Microphone and enable TranscribeMachine.",
+                                buttonLabel: "Open Settings",
+                                action: { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!) }
+                            )
+                        }
+                        if recorder.screenRecordingPermissionDenied {
+                            PermissionBanner(
+                                theme: theme,
+                                message: "Screen Recording access required for Computer Audio. Open System Settings → Privacy & Security → Screen Recording and enable TranscribeMachine.",
+                                buttonLabel: "Open Settings",
+                                action: { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!) }
+                            )
+                        }
                         if transcriber.modelStatus == "Download failed" { setupBanner }
-                        if hasContent || recorder.isRecording { transcriptSection }
+
+                        if recorder.isRecording { recordingBar }
+
+                        if silenceWarningActive { silenceWarningBanner }
+
+                        if hasContent || recorder.isRecording {
+                            transcriptSection
+                        } else {
+                            emptyStatePanel
+                        }
+
                         if hasContent && !recorder.isRecording { aiSection }
-                        Spacer(minLength: 20)
                     }
-                    .padding(.horizontal, 22)
-                    .padding(.top, 18)
+                    .padding(.horizontal, 26)
+                    .padding(.top, 24)
+                    .padding(.bottom, 24)
                 }
             }
 
@@ -82,7 +217,7 @@ struct ContentView: View {
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(preferredScheme)
         .onAppear {
             recorder.transcriptionEngine = transcriber
             recorder.refreshMicList()
@@ -123,26 +258,29 @@ struct ContentView: View {
         HStack {
             VStack(alignment: .leading, spacing: 1) {
                 Text("TranscribeMachine")
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundColor(.white)
+                    .font(.newsreader(22))
+                    .tracking(-0.2)
+                    .foregroundColor(theme.ink)
                 Text("Local · Private · Offline")
-                    .font(.system(size: 10))
-                    .foregroundColor(Color.white.opacity(0.3))
+                    .font(.system(size: 11))
+                    .tracking(0.4)
+                    .foregroundColor(theme.faint)
             }
             Spacer()
             statusIndicator
             Button {
                 withAnimation(.easeInOut(duration: 0.15)) { showSettings = true }
             } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 13))
-                    .foregroundColor(Color.white.opacity(0.45))
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 15))
+                    .foregroundColor(theme.faint)
             }
             .buttonStyle(.plain)
-            .padding(.leading, 10)
+            .padding(.leading, 12)
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 26)
+        .padding(.top, 20)
+        .padding(.bottom, 20)
     }
 
     @ViewBuilder var statusIndicator: some View {
@@ -151,17 +289,17 @@ struct ContentView: View {
             HStack(spacing: 7) {
                 ProgressView().scaleEffect(0.6)
                 Text(currentStatusLabel)
-                    .font(.system(size: 11))
-                    .foregroundColor(Color.white.opacity(0.4))
+                    .font(.system(size: 11.5))
+                    .foregroundColor(theme.muted)
             }
         } else if isReady && ollama.state == .ready {
-            HStack(spacing: 5) {
+            HStack(spacing: 6) {
                 Circle()
-                    .fill(Color(red: 0.2, green: 0.9, blue: 0.5))
-                    .frame(width: 6, height: 6)
+                    .fill(theme.green)
+                    .frame(width: 7, height: 7)
                 Text("Ready · \(qualityLabel)")
-                    .font(.system(size: 11))
-                    .foregroundColor(Color.white.opacity(0.4))
+                    .font(.system(size: 11.5))
+                    .foregroundColor(theme.muted)
             }
         }
     }
@@ -187,139 +325,168 @@ struct ContentView: View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange)
             Text("Setup failed. Check your connection and relaunch.")
-                .font(.system(size: 12)).foregroundColor(Color.white.opacity(0.6))
+                .font(.system(size: 12)).foregroundColor(theme.muted)
             Spacer()
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
-        .background(Color.white.opacity(0.04))
+        .background(theme.ghost)
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(theme.line, lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
-    // MARK: – Record Buttons
-
-    var recordButtons: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 10) {
-                RecordButton(
-                    title: "Microphone", subtitle: "In-room", icon: "mic.fill",
-                    accentColor: speakerPalette[0], isActive: recorder.micActive, isDisabled: !isReady
-                ) { recorder.toggleMic() }
-
-                RecordButton(
-                    title: "Computer Audio", subtitle: "Zoom / Meet / Remote", icon: "speaker.wave.2.fill",
-                    accentColor: speakerPalette[1], isActive: recorder.systemActive, isDisabled: !isReady
-                ) { recorder.toggleSystemAudio() }
+    var silenceWarningBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "clock.badge.exclamationmark.fill")
+                .foregroundColor(.orange).font(.system(size: 13))
+            Text("No audio detected — recording will stop soon")
+                .font(.system(size: 12)).foregroundColor(.orange.opacity(0.9))
+            Spacer()
+            Button("Keep Going") {
+                transcriber.extendActivity()
+                silenceWarningActive = false
             }
-
-            if recorder.micPermissionDenied {
-                PermissionBanner(
-                    message: "Microphone access denied. Open System Settings → Privacy & Security → Microphone and enable TranscribeMachine.",
-                    buttonLabel: "Open Settings",
-                    action: { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!) }
-                )
-            }
-
-            if recorder.screenRecordingPermissionDenied {
-                PermissionBanner(
-                    message: "Screen Recording access required for Computer Audio. Open System Settings → Privacy & Security → Screen Recording and enable TranscribeMachine.",
-                    buttonLabel: "Open Settings",
-                    action: { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!) }
-                )
-            }
-
-            if recorder.isRecording {
-                Button { stopRecording() } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "stop.circle.fill")
-                        Text("Stop")
-                    }
-                    .font(.system(size: 12, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 7)
-                }
-                .buttonStyle(StopButtonStyle())
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-
-            if silenceWarningActive {
-                HStack(spacing: 8) {
-                    Image(systemName: "clock.badge.exclamationmark.fill")
-                        .foregroundColor(.orange).font(.system(size: 13))
-                    Text("No audio detected — recording will stop soon")
-                        .font(.system(size: 12)).foregroundColor(.orange.opacity(0.9))
-                    Spacer()
-                    Button("Keep Going") {
-                        transcriber.extendActivity()
-                        silenceWarningActive = false
-                    }
-                    .font(.system(size: 11, weight: .semibold)).foregroundColor(.orange)
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 12).padding(.vertical, 8)
-                .background(Color.orange.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.orange.opacity(0.25), lineWidth: 1))
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
+            .font(.system(size: 11, weight: .semibold)).foregroundColor(.orange)
+            .buttonStyle(.plain)
         }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(Color.orange.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.orange.opacity(0.25), lineWidth: 1))
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    // MARK: – Sources Card
+
+    var sourcesCard: some View {
+        VStack(spacing: 0) {
+            SourceRow(
+                theme: theme, title: "Microphone", subtitle: "In-room", icon: "mic.fill",
+                tileColor: theme.slate, tileTint: theme.slateTint,
+                isActive: recorder.micActive, isDisabled: !isReady
+            ) { recorder.toggleMic() }
+
+            Divider().background(theme.line2)
+
+            SourceRow(
+                theme: theme, title: "Computer Audio", subtitle: "Zoom / Meet / Remote", icon: "speaker.wave.2.fill",
+                tileColor: theme.accent, tileTint: theme.accentTint,
+                isActive: recorder.systemActive, isDisabled: !isReady
+            ) { recorder.toggleSystemAudio() }
+        }
+        .background(theme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 13))
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(theme.line, lineWidth: 1))
         .animation(.easeInOut(duration: 0.2), value: recorder.isRecording)
-        .animation(.easeInOut(duration: 0.2), value: silenceWarningActive)
+    }
+
+    var recordingBar: some View {
+        HStack(spacing: 10) {
+            BlinkingDot(color: PaperTheme.recDot)
+            Text("Recording")
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundColor(theme.accent)
+            Text(formatElapsed(elapsedSeconds))
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundColor(theme.muted)
+            Spacer()
+            Button(action: stopRecording) {
+                HStack(spacing: 5) {
+                    Image(systemName: "stop.fill").font(.system(size: 10))
+                    Text("Stop").font(.system(size: 12, weight: .semibold))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 14).padding(.vertical, 7)
+                .background(PaperTheme.stopButton)
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 11)
+        .background(theme.accentTint)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    // MARK: – Empty State
+
+    var emptyStatePanel: some View {
+        VStack(spacing: 8) {
+            Text("Ready when you are")
+                .font(.newsreaderItalic(20))
+                .foregroundColor(theme.ink2)
+            Text("Choose a source above to start. Your transcript appears here — nothing ever leaves your Mac.")
+                .font(.system(size: 12))
+                .foregroundColor(theme.faint)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 44)
+        .padding(.horizontal, 24)
+        .background(
+            RoundedRectangle(cornerRadius: 13)
+                .strokeBorder(theme.hair, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+        )
     }
 
     // MARK: – Transcript
 
     var transcriptSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label("Transcript", systemImage: "text.alignleft")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(Color.white.opacity(0.4))
-                    .textCase(.uppercase)
-                    .kerning(0.6)
+            HStack(spacing: 10) {
+                Text("Transcript")
+                    .font(.newsreaderItalic(17))
+                    .foregroundColor(theme.ink2)
                 if showingDiarized { speakerCountBadge }
                 Spacer()
                 if recorder.isRecording {
-                    RecordingPulse()
-                    Text(formatElapsed(elapsedSeconds))
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundColor(Color.white.opacity(0.35))
+                    RecordingPulse(color: theme.accent)
                 }
-                tinyButton(icon: copiedTranscript ? "checkmark" : "doc.on.doc",
-                           label: copiedTranscript ? "Copied" : "Copy") {
+                transcriptAction(label: copiedTranscript ? "Copied" : "Copy") {
                     copy(showingDiarized ? diarizedTranscriptText : transcriber.fullTranscript)
                     copiedTranscript = true
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copiedTranscript = false }
                 }
-                tinyButton(icon: "square.and.arrow.up", label: "Export") { exportTranscript() }
-                tinyButton(icon: "trash", label: "Clear") {
+                transcriptAction(label: "Export") { exportTranscript() }
+                transcriptAction(label: "Clear") {
                     transcriber.clear(); diarizedSegments = []; aiResult = nil
                 }
             }
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 5) {
+                    LazyVStack(alignment: .leading, spacing: 14) {
                         if showingDiarized {
-                            ForEach(diarizedSegments) { seg in
-                                DiarizedRow(seg: seg, name: displayName(seg), color: color(for: seg)) {
-                                    startRename(seg)
-                                }
+                            ForEach(Array(diarizedSegments.enumerated()), id: \.element.id) { _, seg in
+                                SpeakerBlock(
+                                    theme: theme,
+                                    label: displayName(seg),
+                                    color: color(for: seg),
+                                    text: seg.text,
+                                    onTapLabel: { startRename(seg) }
+                                )
                                 .id(seg.id)
                             }
                         } else if transcriber.segments.isEmpty {
                             Text(recorder.isRecording ? "Listening…" : "")
                                 .font(.system(size: 14))
-                                .foregroundColor(Color.white.opacity(0.2))
+                                .foregroundColor(theme.faint)
                                 .padding(16)
                         } else {
                             ForEach(transcriber.segments) { seg in
-                                LiveRow(seg: seg).id(seg.id)
+                                SpeakerBlock(
+                                    theme: theme,
+                                    label: seg.speaker.rawValue,
+                                    color: seg.speaker.color,
+                                    text: seg.text,
+                                    onTapLabel: nil
+                                )
+                                .id(seg.id)
                             }
                         }
                     }
-                    .padding(12)
+                    .padding(16)
                 }
-                .frame(minHeight: 56, maxHeight: 140)
+                .frame(minHeight: 70, maxHeight: 180)
                 .onChange(of: transcriber.segments.count) { _ in
                     if !showingDiarized, let last = transcriber.segments.last {
                         withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
@@ -331,34 +498,40 @@ struct ContentView: View {
                     }
                 }
             }
-            .background(Color.white.opacity(0.04))
+            .background(theme.card)
             .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.06), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(theme.line, lineWidth: 1))
 
             if showingDiarized {
                 Text("Tap a speaker name to rename")
                     .font(.system(size: 11))
-                    .foregroundColor(Color.white.opacity(0.25))
+                    .foregroundColor(theme.faint)
             }
         }
+    }
+
+    private func transcriptAction(label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label).font(.system(size: 12)).foregroundColor(theme.faint)
+        }
+        .buttonStyle(.plain)
     }
 
     var speakerCountBadge: some View {
         let n = Set(diarizedSegments.map { speakerKey($0) }).count
         return Text("\(n) speaker\(n == 1 ? "" : "s")")
             .font(.system(size: 10, weight: .semibold))
-            .foregroundColor(Color(red: 0.3, green: 0.85, blue: 0.6))
+            .foregroundColor(theme.green)
             .padding(.horizontal, 7).padding(.vertical, 3)
-            .background(Color(red: 0.3, green: 0.85, blue: 0.6).opacity(0.1))
+            .background(theme.green.opacity(0.1))
             .clipShape(Capsule())
     }
 
     // MARK: – AI Section
 
     var aiSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 18) {
 
-            // Four tap-to-run action buttons
             HStack(spacing: 8) {
                 ForEach(AIAction.allCases, id: \.self) { action in
                     Button {
@@ -370,138 +543,243 @@ struct ContentView: View {
                                 ProgressView().scaleEffect(0.55).frame(width: 10, height: 10)
                             }
                             Text(action.rawValue)
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.system(size: 12.5, weight: .semibold))
                                 .lineLimit(1)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 9)
                     }
-                    .buttonStyle(ActionButtonStyle(
+                    .buttonStyle(PaperActionPillStyle(
+                        theme: theme,
                         isSelected: selectedAction == action && aiResult != nil && !isProcessingAI
                     ))
                     .disabled(isProcessingAI || ollama.state != .ready)
                 }
             }
 
-            // Custom instructions field
-            TextField("Optional: e.g. keep it brief · formal tone · focus on tech decisions · write to a client",
-                      text: $customInstructions)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12))
-                .foregroundColor(Color.white.opacity(0.65))
-                .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(Color.white.opacity(0.04))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.07), lineWidth: 1))
+            VStack(spacing: 0) {
+                TextField("Optional — keep it brief · formal tone · focus on the decision",
+                          text: $customInstructions)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .foregroundColor(theme.ink2)
+                    .padding(.vertical, 8)
+                Rectangle().fill(theme.hair).frame(height: 1)
+            }
 
-            if ollama.state == .unavailable { AIUnavailableNotice() }
+            if ollama.state == .unavailable { AIUnavailableNotice(theme: theme) }
 
             if let result = aiResult {
-                VStack(alignment: .leading, spacing: 12) {
+                outputSection(result)
+            }
+        }
+    }
 
-                    // Main output text
-                    ScrollView {
-                        Text(result.main)
-                            .font(.system(size: 14))
-                            .foregroundColor(Color.white.opacity(0.85))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(16)
-                            .textSelection(.enabled)
+    @ViewBuilder
+    private func outputSection(_ result: AIResult) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text(outputHeading)
+                    .font(.newsreader(19))
+                    .foregroundColor(theme.ink)
+                Spacer()
+                Button(action: copyOutput) {
+                    HStack(spacing: 4) {
+                        Image(systemName: copiedAI ? "checkmark" : "doc.on.doc")
+                        Text(copiedAI ? "Copied!" : "Copy")
                     }
-                    .frame(minHeight: 56, maxHeight: 168)
-                    .background(Color.white.opacity(0.04))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.07), lineWidth: 1))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(theme.accent)
+                }
+                .buttonStyle(.plain)
+            }
 
-                    // Follow-ups — clean arrow list, no checkboxes or green card
-                    if !result.actionItems.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Follow-ups")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(Color.white.opacity(0.35))
-                                .textCase(.uppercase)
-                                .kerning(0.8)
-                            ForEach(result.actionItems) { item in
-                                HStack(alignment: .top, spacing: 10) {
-                                    Text("→")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(Color.white.opacity(0.25))
-                                        .padding(.top, 1)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(item.task)
-                                            .font(.system(size: 13))
-                                            .foregroundColor(Color.white.opacity(0.85))
-                                            .textSelection(.enabled)
-                                        let meta = [
-                                            item.owner != "Unknown" ? item.owner : nil,
-                                            item.due   != "Not specified" ? item.due : nil
-                                        ].compactMap { $0 }.joined(separator: " · ")
-                                        if !meta.isEmpty {
-                                            Text(meta)
-                                                .font(.system(size: 11))
-                                                .foregroundColor(Color.white.opacity(0.35))
-                                        }
-                                    }
-                                }
-                            }
+            if selectedAction == .email {
+                emailCard(result)
+            } else {
+                VStack(alignment: .leading, spacing: 13) {
+                    ForEach(Array(outputLines(result.main).enumerated()), id: \.offset) { _, line in
+                        HStack(alignment: .top, spacing: 10) {
+                            Text(bulletGlyph)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(theme.accent)
+                            Text(line)
+                                .font(.system(size: 14.5))
+                                .lineSpacing(5)
+                                .foregroundColor(theme.ink2)
+                                .textSelection(.enabled)
                         }
-                        .padding(14)
-                        .background(Color.white.opacity(0.04))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-
-                    HStack {
-                        Spacer()
-                        Button {
-                            var lines = [result.main]
-                            if !result.actionItems.isEmpty {
-                                lines.append("\nFOLLOW-UPS:")
-                                lines.append(contentsOf: result.actionItems.map { item in
-                                    var s = "→ \(item.task)"
-                                    if item.owner != "Unknown"       { s += "  (\(item.owner))" }
-                                    if item.due   != "Not specified" { s += "  — \(item.due)" }
-                                    return s
-                                })
-                            }
-                            copy(lines.joined(separator: "\n"))
-                            copiedAI = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copiedAI = false }
-                        } label: {
-                            Label(copiedAI ? "Copied!" : "Copy",
-                                  systemImage: copiedAI ? "checkmark.circle.fill" : "doc.on.doc")
-                        }
-                        .buttonStyle(PillButtonStyle(color: speakerPalette[1]))
                     }
                 }
             }
+
+            if !result.actionItems.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Follow-ups")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(theme.faint)
+                        .textCase(.uppercase)
+                        .kerning(0.8)
+                    ForEach(result.actionItems) { item in
+                        HStack(alignment: .top, spacing: 10) {
+                            Text("→")
+                                .font(.system(size: 13))
+                                .foregroundColor(theme.accent)
+                                .padding(.top, 1)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.task)
+                                    .font(.system(size: 14.5))
+                                    .foregroundColor(theme.ink2)
+                                    .textSelection(.enabled)
+                                let meta = [
+                                    item.owner != "Unknown" ? item.owner : "Unassigned",
+                                    item.due   != "Not specified" ? item.due : nil
+                                ].compactMap { $0 }.joined(separator: " · ")
+                                if !meta.isEmpty {
+                                    Text(meta)
+                                        .font(.system(size: 11.5))
+                                        .foregroundColor(theme.faint)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(14)
+                .background(theme.card)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(theme.line, lineWidth: 1))
+            }
         }
+    }
+
+    private func emailCard(_ result: AIResult) -> some View {
+        let (to, subject, body) = parseEmail(result.main)
+        return VStack(alignment: .leading, spacing: 0) {
+            emailRow(label: "To", value: to)
+            Rectangle().fill(theme.line2).frame(height: 1)
+            emailRow(label: "Subject", value: subject, valueBold: true)
+            Rectangle().fill(theme.line2).frame(height: 1)
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(Array(outputLines(body).enumerated()), id: \.offset) { _, line in
+                    Text(line)
+                        .font(.system(size: 14))
+                        .lineSpacing(6)
+                        .foregroundColor(theme.ink2)
+                        .textSelection(.enabled)
+                }
+            }
+            .padding(16)
+        }
+        .background(theme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 13))
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(theme.line, lineWidth: 1))
+    }
+
+    private func emailRow(label: String, value: String, valueBold: Bool = false) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundColor(theme.faint)
+                .frame(width: 52, alignment: .leading)
+            Text(value)
+                .font(.system(size: 13, weight: valueBold ? .semibold : .regular))
+                .foregroundColor(theme.ink2)
+                .textSelection(.enabled)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 11)
+    }
+
+    private func parseEmail(_ text: String) -> (to: String, subject: String, body: String) {
+        var to = ""
+        var subject = ""
+        var bodyLines: [String] = []
+        var pastHeaders = false
+        for rawLine in text.components(separatedBy: "\n") {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if !pastHeaders, line.lowercased().hasPrefix("to:") {
+                to = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+                continue
+            }
+            if !pastHeaders, line.lowercased().hasPrefix("subject:") {
+                subject = String(line.dropFirst(8)).trimmingCharacters(in: .whitespaces)
+                continue
+            }
+            if !pastHeaders, line.isEmpty { pastHeaders = true; continue }
+            pastHeaders = true
+            bodyLines.append(rawLine)
+        }
+        if to.isEmpty { to = "Recipient" }
+        if subject.isEmpty { subject = "Draft Email" }
+        return (to, subject, bodyLines.joined(separator: "\n"))
+    }
+
+    private func outputLines(_ text: String) -> [String] {
+        text.components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    private var outputHeading: String {
+        switch selectedAction {
+        case .recap:     return "Recap"
+        case .decisions: return "Decisions"
+        case .nextSteps: return "Next Steps"
+        case .email:     return "Draft Email"
+        }
+    }
+
+    private var bulletGlyph: String {
+        switch selectedAction {
+        case .recap:     return "—"
+        case .decisions: return "✓"
+        case .nextSteps: return "→"
+        case .email:     return "—"
+        }
+    }
+
+    private func copyOutput() {
+        guard let result = aiResult else { return }
+        var lines = [result.main]
+        if !result.actionItems.isEmpty {
+            lines.append("\nFOLLOW-UPS:")
+            lines.append(contentsOf: result.actionItems.map { item in
+                var s = "→ \(item.task)"
+                if item.owner != "Unknown"       { s += "  (\(item.owner))" }
+                if item.due   != "Not specified" { s += "  — \(item.due)" }
+                return s
+            })
+        }
+        copy(lines.joined(separator: "\n"))
+        copiedAI = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copiedAI = false }
     }
 
     // MARK: – Rename overlay
 
     var renameOverlay: some View {
         ZStack {
-            Color.black.opacity(0.55).ignoresSafeArea()
+            Color.black.opacity(0.45).ignoresSafeArea()
                 .onTapGesture { renamingKey = nil }
             VStack(spacing: 16) {
                 Text("Name this speaker")
-                    .font(.system(size: 15, weight: .semibold)).foregroundColor(.white)
+                    .font(.newsreader(16)).foregroundColor(theme.ink)
                 TextField("e.g. David, Sarah…", text: $renameText)
                     .textFieldStyle(.roundedBorder).frame(width: 260)
                 HStack(spacing: 10) {
                     Button("Cancel") { renamingKey = nil }
-                        .buttonStyle(PillButtonStyle(color: Color.white.opacity(0.12)))
+                        .buttonStyle(PillButtonStyle(color: theme.muted))
                     Button("Save") {
                         if let k = renamingKey { speakerNames[k] = renameText.isEmpty ? nil : renameText }
                         renamingKey = nil
                     }
-                    .buttonStyle(PillButtonStyle(color: speakerPalette[0]))
+                    .buttonStyle(PillButtonStyle(color: theme.accent))
                 }
             }
             .padding(28)
-            .background(Color(red: 0.11, green: 0.11, blue: 0.14))
+            .background(theme.card)
             .clipShape(RoundedRectangle(cornerRadius: 16))
-            .shadow(color: .black.opacity(0.6), radius: 40)
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(theme.line, lineWidth: 1))
+            .shadow(color: .black.opacity(0.3), radius: 40)
         }
     }
 
@@ -511,25 +789,37 @@ struct ContentView: View {
         VStack(spacing: 0) {
             HStack {
                 Text("Settings")
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundColor(.white)
+                    .font(.newsreader(17))
+                    .foregroundColor(theme.ink)
                 Spacer()
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) { showSettings = false }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 17))
-                        .foregroundColor(Color.white.opacity(0.35))
+                        .foregroundColor(theme.faint)
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 26)
+            .padding(.vertical, 16)
 
-            Divider().background(Color.white.opacity(0.08))
+            Divider().background(theme.line)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
+                    settingsRow("Appearance") {
+                        Picker("", selection: $appearanceMode) {
+                            Text("System").tag("system")
+                            Text("Light").tag("light")
+                            Text("Dark").tag("dark")
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                    }
+
+                    settingsDivider
+
                     settingsRow("Microphone") {
                         Picker("", selection: $recorder.selectedMicID) {
                             ForEach(recorder.availableMics, id: \.uniqueID) { dev in
@@ -540,11 +830,11 @@ struct ContentView: View {
                         .disabled(recorder.micActive)
                         if recorder.micActive {
                             Text("Stop recording to change mic")
-                                .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
+                                .font(.system(size: 11)).foregroundColor(theme.faint)
                         }
                     }
 
-                    Divider().background(Color.white.opacity(0.06)).padding(.horizontal, 22)
+                    settingsDivider
 
                     settingsRow("Transcription Quality") {
                         Picker("", selection: $whisperModelQuality) {
@@ -555,11 +845,11 @@ struct ContentView: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
                         Text("Fast: smallest, quickest. Balanced: small model. Quality: medium model, most accurate.")
-                            .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
+                            .font(.system(size: 11)).foregroundColor(theme.faint)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    Divider().background(Color.white.opacity(0.06)).padding(.horizontal, 22)
+                    settingsDivider
 
                     settingsRow("Language") {
                         Picker("", selection: $transcriptionLanguage) {
@@ -575,22 +865,22 @@ struct ContentView: View {
                         }
                         .labelsHidden()
                         Text("Forcing a language improves accuracy. Auto-detect can misfire on short clips.")
-                            .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
+                            .font(.system(size: 11)).foregroundColor(theme.faint)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    Divider().background(Color.white.opacity(0.06)).padding(.horizontal, 22)
+                    settingsDivider
 
                     settingsRow("Reduce Repetition") {
                         Toggle("", isOn: $suppressRepetition)
                             .labelsHidden()
                             .toggleStyle(.switch)
                         Text("Filters repetitive or looping output. Recommended for noisy environments.")
-                            .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
+                            .font(.system(size: 11)).foregroundColor(theme.faint)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    Divider().background(Color.white.opacity(0.06)).padding(.horizontal, 22)
+                    settingsDivider
 
                     settingsRow("Noise Gate") {
                         Picker("", selection: $noiseGate) {
@@ -601,11 +891,11 @@ struct ContentView: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
                         Text("Strict: only loud speech. Normal: balanced. Sensitive: quiet rooms, picks up more.")
-                            .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
+                            .font(.system(size: 11)).foregroundColor(theme.faint)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    Divider().background(Color.white.opacity(0.06)).padding(.horizontal, 22)
+                    settingsDivider
 
                     settingsRow("Update Frequency") {
                         Picker("", selection: $chunkLengthSeconds) {
@@ -618,22 +908,22 @@ struct ContentView: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
                         Text("How often a new transcript line appears. Auto follows the quality setting.")
-                            .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
+                            .font(.system(size: 11)).foregroundColor(theme.faint)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    Divider().background(Color.white.opacity(0.06)).padding(.horizontal, 22)
+                    settingsDivider
 
                     settingsRow("Strict Confidence") {
                         Toggle("", isOn: $strictConfidence)
                             .labelsHidden()
                             .toggleStyle(.switch)
                         Text("Only output text Whisper is confident about. Reduces errors but may miss some words.")
-                            .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
+                            .font(.system(size: 11)).foregroundColor(theme.faint)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    Divider().background(Color.white.opacity(0.06)).padding(.horizontal, 22)
+                    settingsDivider
 
                     settingsRow("Auto-Stop") {
                         Picker("", selection: $silenceTimeoutMinutes) {
@@ -646,11 +936,11 @@ struct ContentView: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
                         Text("Stops the recording automatically after this much silence.")
-                            .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.3))
+                            .font(.system(size: 11)).foregroundColor(theme.faint)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    Divider().background(Color.white.opacity(0.06)).padding(.horizontal, 22)
+                    settingsDivider
 
                     settingsRow("AI Prompts") {
                         Picker("", selection: $selectedPromptTab) {
@@ -664,18 +954,18 @@ struct ContentView: View {
 
                         TextEditor(text: currentPromptBinding)
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(Color.white.opacity(0.8))
+                            .foregroundColor(theme.ink2)
                             .frame(height: 160)
                             .scrollContentBackground(.hidden)
-                            .background(Color.white.opacity(0.05))
+                            .background(theme.ghost)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.08), lineWidth: 1))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(theme.line, lineWidth: 1))
 
                         HStack {
                             Spacer()
                             Button("Reset to default") { resetCurrentPrompt() }
                                 .font(.system(size: 11))
-                                .foregroundColor(Color.white.opacity(0.35))
+                                .foregroundColor(theme.faint)
                                 .buttonStyle(.plain)
                         }
                     }
@@ -685,11 +975,11 @@ struct ContentView: View {
 
             Spacer()
 
-            Divider().background(Color.white.opacity(0.06))
+            Divider().background(theme.line)
             VStack(spacing: 6) {
                 Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")")
                     .font(.system(size: 10))
-                    .foregroundColor(Color.white.opacity(0.2))
+                    .foregroundColor(theme.faint)
                 HStack(spacing: 16) {
                     Button("Privacy Policy") {
                         NSWorkspace.shared.open(URL(string: "https://1hsaved.com/transcribemachine/privacy")!)
@@ -699,14 +989,18 @@ struct ContentView: View {
                     }
                 }
                 .font(.system(size: 10))
-                .foregroundColor(Color.white.opacity(0.25))
+                .foregroundColor(theme.faint)
                 .buttonStyle(.plain)
             }
             .padding(.vertical, 10)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(red: 0.06, green: 0.06, blue: 0.08).ignoresSafeArea())
+        .background(theme.paper.ignoresSafeArea())
         .onAppear { recorder.refreshMicList() }
+    }
+
+    private var settingsDivider: some View {
+        Divider().background(theme.line2).padding(.horizontal, 26)
     }
 
     private var currentPromptBinding: Binding<String> {
@@ -731,12 +1025,12 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color.white.opacity(0.4))
+                .foregroundColor(theme.faint)
                 .textCase(.uppercase)
                 .kerning(0.5)
             content()
         }
-        .padding(.horizontal, 22)
+        .padding(.horizontal, 26)
         .padding(.vertical, 18)
     }
 
@@ -821,7 +1115,7 @@ struct ContentView: View {
     private func color(for seg: DiarizedSegment) -> Color {
         let keys = Array(Set(diarizedSegments.map { speakerKey($0) })).sorted()
         let idx = keys.firstIndex(of: speakerKey(seg)) ?? 0
-        return speakerPalette[idx % speakerPalette.count]
+        return speakerColor(idx, theme: theme)
     }
 
     private func startRename(_ seg: DiarizedSegment) {
@@ -845,7 +1139,7 @@ struct DownloadConfirmSheet: View {
         VStack(spacing: 20) {
             Image(systemName: "arrow.down.circle.fill")
                 .font(.system(size: 44))
-                .foregroundColor(Color(red: 0.4, green: 0.6, blue: 1.0))
+                .foregroundColor(Color(hex: 0xB0623F))
             Text("Download AI Model")
                 .font(.system(size: 18, weight: .bold))
             Text("TranscribeMachine needs to download a speech recognition model (\(sizeMB) MB) to work. This happens once and requires an internet connection.")
@@ -865,129 +1159,138 @@ struct DownloadConfirmSheet: View {
         .frame(width: 360)
     }
 }
+
 // MARK: – Row Views
 
-struct DiarizedRow: View {
-    let seg: DiarizedSegment
-    let name: String
+struct SpeakerBlock: View {
+    let theme: PaperTheme
+    let label: String
     let color: Color
-    let onRename: () -> Void
+    let text: String
+    let onTapLabel: (() -> Void)?
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Button(action: onRename) {
-                HStack(spacing: 4) {
-                    Image(systemName: seg.source == "local" ? "mic.fill" : "speaker.wave.2.fill")
-                        .font(.system(size: 8))
-                    Text(name).font(.system(size: 10, weight: .semibold)).lineLimit(1)
+        HStack(alignment: .top, spacing: 0) {
+            Rectangle().fill(theme.hair).frame(width: 2)
+            VStack(alignment: .leading, spacing: 4) {
+                if let onTapLabel {
+                    Button(action: onTapLabel) {
+                        Text(label.uppercased())
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .kerning(1.1)
+                            .foregroundColor(color)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Text(label.uppercased())
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .kerning(1.1)
+                        .foregroundColor(color)
                 }
-                .foregroundColor(color)
-                .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(color.opacity(0.12))
-                .clipShape(Capsule())
-                .overlay(Capsule().stroke(color.opacity(0.2), lineWidth: 0.5))
-            }
-            .buttonStyle(.plain)
-            .frame(width: 96, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(seg.text)
-                    .font(.system(size: 13))
-                    .foregroundColor(Color.white.opacity(0.85))
+                Text(text)
+                    .font(.system(size: 14))
+                    .lineSpacing(5)
+                    .foregroundColor(theme.ink2)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
-                Text(formatTime(seg.start))
-                    .font(.system(size: 9))
-                    .foregroundColor(Color.white.opacity(0.2))
             }
+            .padding(.leading, 14)
         }
-        .padding(.vertical, 2)
-    }
-
-    private func formatTime(_ s: Double) -> String {
-        String(format: "%d:%02d", Int(s) / 60, Int(s) % 60)
-    }
-}
-
-struct LiveRow: View {
-    let seg: TranscriptSegment
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: seg.speaker.icon)
-                .font(.system(size: 8))
-                .foregroundColor(seg.speaker.color)
-                .padding(.horizontal, 6).padding(.vertical, 4)
-                .background(seg.speaker.color.opacity(0.12))
-                .clipShape(Capsule())
-                .frame(width: 26, alignment: .center)
-
-            Text(seg.text)
-                .font(.system(size: 13))
-                .foregroundColor(Color.white.opacity(0.85))
-                .fixedSize(horizontal: false, vertical: true)
-                .textSelection(.enabled)
-        }
-        .padding(.vertical, 2)
     }
 }
 
 // MARK: – Shared UI Components
 
-struct RecordButton: View {
-    let title: String; let subtitle: String; let icon: String
-    let accentColor: Color; let isActive: Bool; let isDisabled: Bool
+struct SourceRow: View {
+    let theme: PaperTheme
+    let title: String
+    let subtitle: String
+    let icon: String
+    let tileColor: Color
+    let tileTint: Color
+    let isActive: Bool
+    let isDisabled: Bool
     let action: () -> Void
-    @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 8) {
+            HStack(spacing: 12) {
                 ZStack {
-                    if isActive {
-                        Circle().fill(accentColor.opacity(0.18)).frame(width: 56, height: 56)
-                            .scaleEffect(hovering ? 1.08 : 1.0)
-                            .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: isActive)
-                    }
-                    Circle().fill(isActive ? accentColor : accentColor.opacity(0.12)).frame(width: 44, height: 44)
-                    Image(systemName: icon).font(.system(size: 18, weight: .medium))
-                        .foregroundColor(isActive ? .white : accentColor.opacity(0.7))
+                    RoundedRectangle(cornerRadius: 9)
+                        .fill(isActive ? tileColor : tileTint)
+                        .frame(width: 36, height: 36)
+                    Image(systemName: icon)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(isActive ? .white : tileColor)
                 }
-                VStack(spacing: 2) {
-                    Text(title).font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(isDisabled ? Color.white.opacity(0.2) : Color.white.opacity(isActive ? 1 : 0.8))
-                    Text(isActive ? "Recording…" : subtitle).font(.system(size: 10))
-                        .foregroundColor(isActive ? accentColor : Color.white.opacity(0.3))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .foregroundColor(isDisabled ? theme.faint : theme.ink2)
+                    Text(isActive ? "Recording…" : subtitle)
+                        .font(.system(size: 11))
+                        .foregroundColor(isActive ? tileColor : theme.faint)
                 }
+                Spacer()
+                PaperToggleIndicator(isOn: isActive, accent: tileColor, theme: theme)
             }
-            .frame(maxWidth: .infinity).padding(.vertical, 14)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(isActive ? accentColor.opacity(0.1) : Color.white.opacity(hovering ? 0.05 : 0.03))
-                    .overlay(RoundedRectangle(cornerRadius: 12)
-                        .stroke(isActive ? accentColor.opacity(0.4) : Color.white.opacity(0.06), lineWidth: 1))
-            )
+            .padding(.horizontal, 16)
+            .padding(.vertical, 15)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).disabled(isDisabled)
-        .onHover { hovering = $0 }
-        .animation(.easeInOut(duration: 0.15), value: hovering)
-        .animation(.easeInOut(duration: 0.2), value: isActive)
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .animation(.easeInOut(duration: 0.15), value: isActive)
+    }
+}
+
+struct PaperToggleIndicator: View {
+    let isOn: Bool
+    let accent: Color
+    let theme: PaperTheme
+
+    var body: some View {
+        ZStack(alignment: isOn ? .trailing : .leading) {
+            Capsule()
+                .fill(isOn ? accent : theme.toggle)
+                .frame(width: 40, height: 23)
+            Circle()
+                .fill(isOn ? Color.white : theme.knob)
+                .frame(width: 18, height: 18)
+                .shadow(color: .black.opacity(0.15), radius: 1, y: 1)
+                .padding(2.5)
+        }
+    }
+}
+
+struct BlinkingDot: View {
+    let color: Color
+    @State private var dim = false
+    var body: some View {
+        Circle().fill(color).frame(width: 7, height: 7)
+            .opacity(dim ? 0.3 : 1.0)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { dim = true }
+            }
     }
 }
 
 struct RecordingPulse: View {
+    let color: Color
     @State private var pulsing = false
     var body: some View {
         HStack(spacing: 5) {
-            Circle().fill(Color.red).frame(width: 7, height: 7)
+            Circle().fill(color).frame(width: 6, height: 6)
                 .scaleEffect(pulsing ? 1.3 : 1.0).opacity(pulsing ? 0.6 : 1.0)
                 .animation(.easeInOut(duration: 0.7).repeatForever(), value: pulsing)
-            Text("REC").font(.system(size: 10, weight: .bold)).foregroundColor(Color.red.opacity(0.8)).kerning(1.2)
+            Text("REC").font(.system(size: 10, weight: .bold)).foregroundColor(color.opacity(0.8)).kerning(1.2)
         }
         .onAppear { pulsing = true }
     }
 }
 
 struct PermissionBanner: View {
+    let theme: PaperTheme
     let message: String
     let buttonLabel: String
     let action: () -> Void
@@ -996,7 +1299,7 @@ struct PermissionBanner: View {
         HStack(spacing: 10) {
             Image(systemName: "lock.fill").foregroundColor(.orange).font(.system(size: 12))
             Text(message)
-                .font(.system(size: 11)).foregroundColor(Color.white.opacity(0.7))
+                .font(.system(size: 11)).foregroundColor(theme.ink2)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer()
             Button(buttonLabel, action: action)
@@ -1011,12 +1314,13 @@ struct PermissionBanner: View {
 }
 
 struct AIUnavailableNotice: View {
+    let theme: PaperTheme
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).font(.system(size: 12))
             VStack(alignment: .leading, spacing: 2) {
-                Text("AI engine not found").font(.system(size: 12, weight: .semibold)).foregroundColor(Color.white.opacity(0.8))
-                Text("Please reinstall the app to set up AI features.").font(.system(size: 11)).foregroundColor(Color.white.opacity(0.4))
+                Text("AI engine not found").font(.system(size: 12, weight: .semibold)).foregroundColor(theme.ink2)
+                Text("Please reinstall the app to set up AI features.").font(.system(size: 11)).foregroundColor(theme.faint)
             }
             Spacer()
         }
@@ -1027,19 +1331,19 @@ struct AIUnavailableNotice: View {
     }
 }
 
-struct ActionButtonStyle: ButtonStyle {
+struct PaperActionPillStyle: ButtonStyle {
+    let theme: PaperTheme
     let isSelected: Bool
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundColor(isSelected ? .white : Color.white.opacity(0.6))
+            .foregroundColor(isSelected ? theme.accentInk : theme.muted)
             .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected
-                          ? Color.white.opacity(0.14)
-                          : Color.white.opacity(configuration.isPressed ? 0.09 : 0.05))
-                    .overlay(RoundedRectangle(cornerRadius: 8)
-                        .stroke(isSelected ? Color.white.opacity(0.2) : Color.white.opacity(0.09), lineWidth: 1))
+                RoundedRectangle(cornerRadius: 999)
+                    .fill(isSelected ? theme.accent : theme.ghost)
+                    .overlay(RoundedRectangle(cornerRadius: 999)
+                        .stroke(isSelected ? Color.clear : theme.line, lineWidth: 1))
             )
+            .opacity(configuration.isPressed ? 0.85 : 1)
     }
 }
 
@@ -1052,21 +1356,4 @@ struct PillButtonStyle: ButtonStyle {
             .background(color.opacity(configuration.isPressed ? 0.6 : 0.85))
             .clipShape(Capsule())
     }
-}
-
-struct StopButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundColor(.white)
-            .background(Color.red.opacity(configuration.isPressed ? 0.5 : 0.7))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
-}
-
-private func tinyButton(icon: String, label: String, action: @escaping @MainActor () -> Void) -> some View {
-    Button { action() } label: {
-        Label(label, systemImage: icon).font(.system(size: 11))
-    }
-    .buttonStyle(.plain)
-    .foregroundColor(Color.white.opacity(0.35))
 }
