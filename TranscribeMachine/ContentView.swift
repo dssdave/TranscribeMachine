@@ -715,8 +715,18 @@ struct ContentView: View {
 
     private func outputLines(_ text: String) -> [String] {
         text.components(separatedBy: "\n")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .map { stripLeadingBullet($0.trimmingCharacters(in: .whitespaces)) }
             .filter { !$0.isEmpty }
+    }
+
+    private func stripLeadingBullet(_ line: String) -> String {
+        var s = line
+        let markers: [Character] = ["-", "–", "—", "•", "*"]
+        while let first = s.first, markers.contains(first) {
+            s.removeFirst()
+            s = s.trimmingCharacters(in: .whitespaces)
+        }
+        return s
     }
 
     private var outputHeading: String {

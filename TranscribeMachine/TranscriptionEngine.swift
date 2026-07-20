@@ -11,7 +11,7 @@ struct TranscriptSegment: Identifiable {
 
     enum Speaker: String {
         case local = "You"
-        case remote = "Caller"
+        case remote = "Speaker"
 
         var color: Color {
             switch self {

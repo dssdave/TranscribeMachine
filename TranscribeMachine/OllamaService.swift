@@ -38,6 +38,7 @@ extension OllamaService {
     static let defaultPromptEmail = """
     Write a professional follow-up email based on this transcript.
     The sender is "You" in the transcript. Use [Your Name] for the sign-off.
+    The recipient is not known — greet with a generic opener like "Hi," or "Hi all,". Do not invent or assume a recipient name, and do not address the reader as "Audience".
 
     Include: subject line, brief recap of what was discussed, key decisions if any were made.
     Only include action items if someone explicitly said they will do something.
@@ -518,7 +519,7 @@ class OllamaService: ObservableObject {
                 }
             }
 
-            for (bad, good) in [("[Local]","you"),("[Remote]","caller"),("[You]","you"),("[Caller]","caller")] {
+            for (bad, good) in [("[Local]","you"),("[Remote]","the speaker"),("[You]","you"),("[Caller]","the speaker"),("[Speaker]","the speaker")] {
                 task  = task.replacingOccurrences(of: bad, with: good)
                 owner = owner.replacingOccurrences(of: bad, with: good)
             }
