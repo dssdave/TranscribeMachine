@@ -22,6 +22,21 @@ targets:
       - path: TranscribeMachine/Resources
     info:
       path: TranscribeMachine/Info.plist
+      properties:
+        CFBundleName: $(PRODUCT_NAME)
+        CFBundleDisplayName: TranscribeMachine
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        CFBundleDevelopmentRegion: $(DEVELOPMENT_LANGUAGE)
+        CFBundleInfoDictionaryVersion: "6.0"
+        CFBundlePackageType: APPL
+        CFBundleShortVersionString: "1.1.2"
+        CFBundleVersion: "34"
+        CFBundleIconFile: AppIcon
+        LSApplicationCategoryType: public.app-category.productivity
+        LSMinimumSystemVersion: "14.0"
+        NSHighResolutionCapable: true
+        NSMicrophoneUsageDescription: TranscribeMachine needs microphone access to transcribe in-room audio.
     entitlements:
       path: TranscribeMachine/TranscribeMachine.entitlements
     dependencies:
