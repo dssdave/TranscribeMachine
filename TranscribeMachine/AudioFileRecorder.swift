@@ -170,7 +170,7 @@ class AudioFileRecorder: ObservableObject {
                 self.micActive       = true
                 self.micRestartAttempts = 0
                 self.micAudioUnstable = false
-                self.observeMicRuntimeErrors(for: session)
+                self.observeMicRuntimeErrors(for: boxedSession.value)
             }
         }
     }
