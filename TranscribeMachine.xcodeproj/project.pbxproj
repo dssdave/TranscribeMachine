@@ -12,8 +12,10 @@
 		5CA21996249721D8BF4B13E8 /* WhisperXRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E2E3C198C382B9E533FF25 /* WhisperXRunner.swift */; };
 		5FF1CB2BFD0CE249664FFEAE /* TranscriptionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16A0A739581FB44DCBA1BDD0 /* TranscriptionEngine.swift */; };
 		62131554DE1F8409F5D061B4 /* TranscribeMachineApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F5F073D1D533855A7AE2655 /* TranscribeMachineApp.swift */; };
+		630CB406840B61F4E22E845C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8CFEC80FE742E00DDB019EB4 /* Assets.xcassets */; };
 		6E93D43EDF1832F0C249B43A /* AudioFileRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED559CFB226C827C7576DD32 /* AudioFileRecorder.swift */; };
 		7688F5A215527C496019CCEB /* setup_whisperx.sh in Resources */ = {isa = PBXBuildFile; fileRef = DCA8B4DD738A77B1AC85511B /* setup_whisperx.sh */; };
+		DB66D881C08E7589D7A6D247 /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = ADF4CC71F13A2CDF55996D38 /* AppIcon.icns */; };
 		DCC9C85FD1BE74248FF7F44A /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B56109253500BAE1F26B62E /* ContentView.swift */; };
 		DD272C3B9D382809120397B8 /* diarize.py in Resources */ = {isa = PBXBuildFile; fileRef = F10E47B7D6B5B46704BA1AB4 /* diarize.py */; };
 		E76C5613FFB94C4B9C48B423 /* OllamaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191B47E16206E8706B397E46 /* OllamaService.swift */; };
@@ -25,6 +27,8 @@
 		191B47E16206E8706B397E46 /* OllamaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaService.swift; sourceTree = "<group>"; };
 		5F5F073D1D533855A7AE2655 /* TranscribeMachineApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscribeMachineApp.swift; sourceTree = "<group>"; };
 		6C508132A0C3895BA3454069 /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
+		8CFEC80FE742E00DDB019EB4 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		ADF4CC71F13A2CDF55996D38 /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		B43B739AB7885AB63FBAC9B5 /* TranscribeMachine.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TranscribeMachine.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B7E2E3C198C382B9E533FF25 /* WhisperXRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperXRunner.swift; sourceTree = "<group>"; };
 		DCA8B4DD738A77B1AC85511B /* setup_whisperx.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = setup_whisperx.sh; sourceTree = "<group>"; };
@@ -63,6 +67,7 @@
 		FABC67F56D6DE874D2656711 /* TranscribeMachine */ = {
 			isa = PBXGroup;
 			children = (
+				8CFEC80FE742E00DDB019EB4 /* Assets.xcassets */,
 				ED559CFB226C827C7576DD32 /* AudioFileRecorder.swift */,
 				6C508132A0C3895BA3454069 /* AudioRecorder.swift */,
 				0B56109253500BAE1F26B62E /* ContentView.swift */,
@@ -78,6 +83,7 @@
 		FAD9EA90FB24339E28378691 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				ADF4CC71F13A2CDF55996D38 /* AppIcon.icns */,
 				F10E47B7D6B5B46704BA1AB4 /* diarize.py */,
 				DCA8B4DD738A77B1AC85511B /* setup_whisperx.sh */,
 			);
@@ -148,6 +154,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DB66D881C08E7589D7A6D247 /* AppIcon.icns in Resources */,
+				630CB406840B61F4E22E845C /* Assets.xcassets in Resources */,
 				DD272C3B9D382809120397B8 /* diarize.py in Resources */,
 				7688F5A215527C496019CCEB /* setup_whisperx.sh in Resources */,
 			);
@@ -178,7 +186,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = TranscribeMachine/TranscribeMachine.entitlements;
-				CODE_SIGN_IDENTITY = "Developer ID Application";
+				CODE_SIGN_IDENTITY = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEVELOPMENT_TEAM = D7LK7963NP;
