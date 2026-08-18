@@ -2,15 +2,17 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>method</key>
-    <string>mac-app-store</string>
-    <key>teamID</key>
-    <string>D7LK7963NP</string>
-    <key>signingStyle</key>
-    <string>manual</string>
-    <key>signingCertificate</key>
-    <string>Apple Distribution</string>
-    <key>stripSwiftSymbols</key>
-    <true/>
+	<key>installerSigningCertificate</key>
+	<string>0D2B607A4D14950DE752D6349AA73835E71C4F27</string>
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>signingCertificate</key>
+	<string>BB4A24E97493AE7E481954C8F4377520C207CABF</string>
+	<key>signingStyle</key>
+	<string>manual</string>
+	<key>stripSwiftSymbols</key>
+	<true/>
+	<key>teamID</key>
+	<string>D7LK7963NP</string>
 </dict>
 </plist>
