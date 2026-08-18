@@ -31,7 +31,7 @@ targets:
         CFBundleInfoDictionaryVersion: "6.0"
         CFBundlePackageType: APPL
         CFBundleShortVersionString: "1.1.2"
-        CFBundleVersion: "35"
+        CFBundleVersion: "36"
         CFBundleIconFile: AppIcon
         LSApplicationCategoryType: public.app-category.productivity
         LSMinimumSystemVersion: "14.0"
@@ -62,5 +62,5 @@ targets:
         Release:
           CODE_SIGN_STYLE: Manual
           DEVELOPMENT_TEAM: D7LK7963NP
-          CODE_SIGN_IDENTITY: Apple Distribution
-          PROVISIONING_PROFILE_SPECIFIER: ""
+          CODE_SIGN_IDENTITY: BB4A24E97493AE7E481954C8F4377520C207CABF
+          PROVISIONING_PROFILE_SPECIFIER: TranscribeMachine Mac App Store

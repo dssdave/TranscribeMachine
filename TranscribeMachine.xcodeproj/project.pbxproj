@@ -186,7 +186,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = TranscribeMachine/TranscribeMachine.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_IDENTITY = BB4A24E97493AE7E481954C8F4377520C207CABF;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEVELOPMENT_TEAM = D7LK7963NP;
@@ -198,7 +198,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.dssdave.TranscribeMachine;
-				PROVISIONING_PROFILE_SPECIFIER = "";
+				PROVISIONING_PROFILE_SPECIFIER = "TranscribeMachine Mac App Store";
 				SDKROOT = macosx;
 				SWIFT_STRICT_CONCURRENCY = minimal;
 				SWIFT_VERSION = 6.0;

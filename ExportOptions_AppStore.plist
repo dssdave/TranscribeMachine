@@ -6,6 +6,11 @@
 	<string>0D2B607A4D14950DE752D6349AA73835E71C4F27</string>
 	<key>method</key>
 	<string>app-store-connect</string>
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>com.dssdave.TranscribeMachine</key>
+		<string>TranscribeMachine Mac App Store</string>
+	</dict>
 	<key>signingCertificate</key>
 	<string>BB4A24E97493AE7E481954C8F4377520C207CABF</string>
 	<key>signingStyle</key>
